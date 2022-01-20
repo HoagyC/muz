@@ -2,22 +2,35 @@ import time
 
 import gym
 
-from MCTS import MCTS
+from mcts import MCTS
+from models import CartDyna, CartPred, CartRepr
 
-env = gym.make("BreakoutNoFrameskip-v4")
-env.reset()
+env = gym.make("CartPole-v0")
 
-print(env.action_space)
+action_size = env.action_space.n
+obs_size = env.observation_space.shape[0]
 
-n_steps = 1000
-mcts = MCST()
+mcts = MCTS(
+    action_size=action_size,
+    obs_size=obs_size,
+    repr_net=CartRepr,
+    dyna_net=CartDyna,
+    pred_net=CartPred
+)
 
-for _ in range(n_steps):
+n_steps = 100
+n_simulations = 100
+
+frame = env.reset()
+for i in range(n_steps):
+    tree = mcts.search(n_simulations, frame)
+    action = tree.pick_action()
+    
     env.render("human")
+    frame, score, over, _ = env.step(action)
+    
+    mcts.update()
 
-    frame_rate = 30
-    time.sleep(1 / frame_rate)
-
-    env.step(env.action_space.sample())
+    print(f'Completed step {i:5} with action {action} and score {score}.')
 
 env.close()

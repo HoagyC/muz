@@ -5,82 +5,28 @@ import torch
 from torch import nn
 
 
-class CartRepr(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.fc1 = nn.Linear(4, 10)
-        self.fc2 = nn.Linear(10, 10)
-
-    def forward(self, state):
-        out = self.fc1(state)
-        out = torch.relu(out)
-        out = self.fc2(out)
-        return out
-
-
-class CartDyna(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.fc1 = nn.Linear(12, 10)
-        self.fc2 = nn.Linear(10, 10)
-
-    def forward(self, action, latent):
-        out = torch.cat(action, latent)
-        out = torch.fc1(out)
-        out = torch.relu(out)
-        out = self.fc2(out)
-        return out
-
-
-class CartPred(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.fc1 = nn.Linear(10, 10)
-        self.fc2 = nn.Linear(10, 3)
-
-    def forward(self, latent):
-        out = self.fc1(latent)
-        out = torch.relu(out)
-        out = self.fc2(out)
-        action = torch.softmax(out[:2], 0)
-        value = out[2]
-        return action, value
-
-
 class MCTS:
-    def __init__(self, action_size, repr_net, dyna_net, pred_net):
+    def __init__(self, action_size, obs_size, repr_net, dyna_net, pred_net, latent_size=10):
         self.action_size = action_size
+        self.obs_size = obs_size
         self.max_reward = 1
         self.min_reward = 0
-        self.prediction_net = pred_net
-        self.dynamics_net = dyna_net
-        self.representation_net = repr_net
-
-    def choose_action(self, policy):
-        return random.randrange(self.action_size)
-
-    def representation_net(self, frame):
-        return [0] * 5
-
-    def dynamics_net(self, latent, action):
-        return [random.random() for _ in range(5)]
-
-    def prediction_net(self, latent):
-        value = random.random() * 10
-        policy = [random.random() for _ in range(self.action_size)]
-        return value, policy
+        self.prediction_net = pred_net(action_size, latent_size)
+        self.dynamics_net = dyna_net(action_size, latent_size)
+        self.representation_net = repr_net(obs_size, latent_size)
 
     def search(self, n_simulations, current_frame):
         # with torch.no_grad():
         #     model.eval()
 
-        init_latent = self.representation_net(current_frame)
-        init_val, init_policy = self.prediction_net(init_latent)
+        frame_t = torch.tensor(current_frame).unsqueeze(0)
+        init_latent = self.representation_net(frame_t)[0]
+        init_policy, init_val = self.prediction_net(init_latent.unsqueeze(0))
         root_node = TreeNode(
             latent=init_latent,
             action_size=self.action_size,
-            val_pred=init_val,
-            pol_pred=init_policy,
+            val_pred=init_val[0],
+            pol_pred=init_policy[0],
         )
 
         for i in range(n_simulations):
@@ -93,15 +39,16 @@ class MCTS:
                     current_node.pol_pred,
                     current_node.latent,
                 )
-                action = self.choose_action(policy_pred)
+                action = current_node.pick_action()
                 if current_node.children[action] is None:
-                    new_latent = self.dynamics_net(latent, action)
-                    new_val, new_policy = self.prediction_net(new_latent)
+                    action_t = nn.functional.one_hot(torch.tensor(action), num_classes=self.action_size)
+                    new_latent = self.dynamics_net(action_t.unsqueeze(0), latent.unsqueeze(0))[0]
+                    new_policy, new_val = self.prediction_net(new_latent.unsqueeze(0))
                     current_node.insert(
                         action_n=action,
                         latent=new_latent,
-                        val_pred=new_val,
-                        pol_pred=new_policy,
+                        val_pred=new_val[0],
+                        pol_pred=new_policy[0],
                     )
                     new_node = True
                 else:
@@ -144,7 +91,6 @@ class TreeNode:
             self.parent.increment()
 
     def update_val(self, curr_val, discount=1):
-        print(self.num_visits, curr_val, self.val_pred)
         nmtr = self.average_val * self.num_visits + (curr_val + self.val_pred)
         dnmtr = self.num_visits + 1
         self.average_val = nmtr / dnmtr
@@ -162,7 +108,8 @@ class TreeNode:
 
         n = child.num_visits if child else 0
         q = child.average_val if child else 0
-        p = self.policy[action_n]
+        
+        p = self.pol_pred[action_n]
 
         vis_frac = math.sqrt(total_visit_count) / (1 + n)
         balance_term = c1 + math.log((total_visit_count + c2 + 1) / c2)
@@ -171,17 +118,12 @@ class TreeNode:
         return score
 
     def pick_action(self):
-        total_visit_count = sum([a.num_visits for a in self.children])
+        total_visit_count = sum([a.num_visits if a else 0 for a in self.children])
 
-        scores = [self.action_score(c, total_visit_count) for c in self.children]
+        scores = [self.action_score(a, total_visit_count) for a in range(self.action_size)]
 
         return scores.index(max(scores))
 
 
 if __name__ == "__main__":
-    mcts = MCTS(
-        action_size=4,
-        repr_net=CartRepr(),
-        dyna_net=CartDyna(),
-        pred_net=CartPred(),
-    )
+    pass

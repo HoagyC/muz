@@ -2,6 +2,63 @@ import torch
 import torch.nn as nn
 
 
+class CartRepr(nn.Module):
+    def __init__(self, obs_size, latent_size):
+        super().__init__()
+        self.fc1 = nn.Linear(obs_size, latent_size)
+        self.fc2 = nn.Linear(latent_size, latent_size)
+
+    def forward(self, state):
+        out = self.fc1(state)
+        out = torch.relu(out)
+        out = self.fc2(out)
+        return out
+
+
+class CartDyna(nn.Module):
+    def __init__(self, action_size, latent_size):
+        super().__init__()
+        self.fc1 = nn.Linear(latent_size + action_size, latent_size)
+        self.fc2 = nn.Linear(latent_size, latent_size + 1)
+
+    def forward(self, action, latent):
+        out = torch.cat([action, latent], dim=1)
+        out = self.fc1(out)
+        out = torch.relu(out)
+        out = self.fc2(out)
+        new_latent = out[:-1]
+        reward = out[-1]
+        return new_latent, reward
+
+
+class CartPred(nn.Module):
+    def __init__(self, action_size, latent_size):
+        super().__init__()
+        self.action_size = action_size
+        self.fc1 = nn.Linear(latent_size, latent_size)
+        self.fc2 = nn.Linear(latent_size, action_size + 1)
+
+    def forward(self, latent):
+        out = self.fc1(latent)
+        out = torch.relu(out)
+        out = self.fc2(out)
+        policy = torch.softmax(out[:, : self.action_size], 1)
+        value = out[:, self.action_size]
+        return policy, value
+    
+
+class MuZeroCartNet(nn.Module):
+    def __init__(self, action_size, obs_size, latent_size):    
+        super().__init__()
+        self.action_size = action_size
+        self.obs_size = obs_size
+        self.latent_size = latent_size
+        
+        self.pred_net = CartPred(self.action_size, self.latent_size)
+        self.dyna_net = CartDyna(self.action_size, self.latent_size)
+        self.repr_net = CartRepr(self.obs_size, self.latent_size)
+
+
 class ResBlock(nn.Module):
     def __init__(
         self, in_channels, out_channels, downsample=None, momentum=0.1, stride=1
@@ -48,7 +105,7 @@ class RepresentationNet(nn.Module):
         self.av_pool2 = nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
         self.res4 = ResBlock(64)
 
-    def forward(x):  # inputs are 96x96??
+    def forward(self, x):  # inputs are 96x96??
         out = torch.relu(self.batch_norm1(self.conv1(x)))  # outputs 48x48
 
         out = self.res1(out)
@@ -60,3 +117,31 @@ class RepresentationNet(nn.Module):
         out = self.res3(out)
         out = self.av_pool2(out)  # outputs 6x6
         out = self.res4(out)
+
+
+# this needs to take a a block representing the current or future state
+# which in this model is a 6x6x64 tensor
+# and return a policy and a value
+# value is intended to predict the n-step reward
+# policy predicts the policy that will actually be undertaken at that future time
+# so that we know where to go in the future
+class PredictionNetwork(nn.Module):
+    def __init__(self, action_size):
+        pass
+
+
+# this takes a block representing a game state, and an action
+# and returns a block of the same shape
+class DynamicsNetwork(nn.Module):
+    def __init__(self, action_size):
+        block_size = 6 * 6 * 64
+        self.fc1 = nn.Linear(block_size + action_size, block_size)
+        self.fc2 = nn.Linear(block_size, block_size)
+
+    def forward(self, block, action):
+        flat_block = block.flatten()
+        out = torch.cat(flat_block, action)
+        out = torch.relu(self.fc1(out))
+        out = self.fc2(out)
+        out = out.view(6, 6, 64)
+        return out
