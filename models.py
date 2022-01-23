@@ -21,13 +21,13 @@ class CartDyna(nn.Module):
         self.fc1 = nn.Linear(latent_size + action_size, latent_size)
         self.fc2 = nn.Linear(latent_size, latent_size + 1)
 
-    def forward(self, action, latent):
+    def forward(self, latent, action):
         out = torch.cat([action, latent], dim=1)
         out = self.fc1(out)
         out = torch.relu(out)
         out = self.fc2(out)
-        new_latent = out[:-1]
-        reward = out[-1]
+        new_latent = out[:, :-1]
+        reward = out[:, -1]
         return new_latent, reward
 
 
@@ -45,18 +45,33 @@ class CartPred(nn.Module):
         policy = torch.softmax(out[:, : self.action_size], 1)
         value = out[:, self.action_size]
         return policy, value
-    
+
 
 class MuZeroCartNet(nn.Module):
-    def __init__(self, action_size, obs_size, latent_size):    
+    def __init__(self, action_size, obs_size, latent_size):
         super().__init__()
         self.action_size = action_size
         self.obs_size = obs_size
         self.latent_size = latent_size
-        
+
         self.pred_net = CartPred(self.action_size, self.latent_size)
         self.dyna_net = CartDyna(self.action_size, self.latent_size)
         self.repr_net = CartRepr(self.obs_size, self.latent_size)
+
+        params = list(self.pred_net.parameters()) + list(self.dyna_net.parameters()) + list(self.repr_net.parameters())
+        self.optimizer = torch.optim.Adam(params, lr=1e-2)
+
+    def predict(self, latent):
+        policy, value = self.pred_net(latent)
+        return policy, value
+
+    def dynamics(self, latent, action):
+        latent, reward = self.dyna_net(latent, action)
+        return latent, reward
+
+    def represent(self, observation):
+        latent = self.repr_net(observation)
+        return latent
 
 
 class ResBlock(nn.Module):
@@ -91,6 +106,8 @@ class ResBlock(nn.Module):
 
 class RepresentationNet(nn.Module):
     def __init__(self):
+        super().__init__()
+
         self.conv1 = nn.Conv2d(3, 32, stride=2, kernel_size=3, padding=1)
         self.batch_norm1 = nn.BatchNorm2d(num_features=32, momentum=0.1)
 

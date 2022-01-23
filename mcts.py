@@ -6,22 +6,22 @@ from torch import nn
 
 
 class MCTS:
-    def __init__(self, action_size, obs_size, repr_net, dyna_net, pred_net, latent_size=10):
+    def __init__(
+        self, action_size, obs_size, mu_net,
+    ):
         self.action_size = action_size
         self.obs_size = obs_size
         self.max_reward = 1
         self.min_reward = 0
-        self.prediction_net = pred_net(action_size, latent_size)
-        self.dynamics_net = dyna_net(action_size, latent_size)
-        self.representation_net = repr_net(obs_size, latent_size)
+        self.mu_net = mu_net
 
     def search(self, n_simulations, current_frame):
         # with torch.no_grad():
         #     model.eval()
 
         frame_t = torch.tensor(current_frame).unsqueeze(0)
-        init_latent = self.representation_net(frame_t)[0]
-        init_policy, init_val = self.prediction_net(init_latent.unsqueeze(0))
+        init_latent = self.mu_net.represent(frame_t)[0]
+        init_policy, init_val = self.mu_net.predict(init_latent.unsqueeze(0))
         root_node = TreeNode(
             latent=init_latent,
             action_size=self.action_size,
@@ -41,9 +41,15 @@ class MCTS:
                 )
                 action = current_node.pick_action()
                 if current_node.children[action] is None:
-                    action_t = nn.functional.one_hot(torch.tensor(action), num_classes=self.action_size)
-                    new_latent = self.dynamics_net(action_t.unsqueeze(0), latent.unsqueeze(0))[0]
-                    new_policy, new_val = self.prediction_net(new_latent.unsqueeze(0))
+                    action_t = nn.functional.one_hot(
+                        torch.tensor(action), num_classes=self.action_size
+                    )
+                    new_latent, reward = [
+                        x[0] for x in
+                        self.mu_net.dynamics(action_t.unsqueeze(0), latent.unsqueeze(0))
+                    ]
+                    
+                    new_policy, new_val = self.mu_net.predict(new_latent.unsqueeze(0))
                     current_node.insert(
                         action_n=action,
                         latent=new_latent,
@@ -53,8 +59,32 @@ class MCTS:
                     new_node = True
                 else:
                     current_node = current_node.children[action]
-
         return root_node
+    
+    def train(self, batch):
+        loss = 0
+        for image, action, targets in batch:
+            target_value, target_reward, target_policy = targets
+            hidden_state = self.mu_net.represent(torch.tensor(image).unsqueeze(0))
+
+            one_hot_action = nn.functional.one_hot(
+                torch.tensor([action]).to(dtype=torch.int64), 
+                num_classes=self.action_size
+            )
+            _, pred_reward = self.mu_net.dynamics(hidden_state, one_hot_action)
+            pred_policy, pred_value = [x[0] for x in self.mu_net.predict(hidden_state)]
+            
+            policy_loss = torch.einsum('i,j->', pred_policy, torch.tensor(target_policy))
+            value_loss = torch.abs(pred_value - target_value) ** 2
+            reward_loss = torch.abs(pred_reward - target_reward) ** 2
+            
+            loss += policy_loss + value_loss + reward_loss
+
+        self.mu_net.optimizer.zero_grad()
+        loss.backward()
+        self.mu_net.optimizer.step()
+
+        return loss
 
 
 class TreeNode:
@@ -108,7 +138,7 @@ class TreeNode:
 
         n = child.num_visits if child else 0
         q = child.average_val if child else 0
-        
+
         p = self.pol_pred[action_n]
 
         vis_frac = math.sqrt(total_visit_count) / (1 + n)
@@ -120,7 +150,9 @@ class TreeNode:
     def pick_action(self):
         total_visit_count = sum([a.num_visits if a else 0 for a in self.children])
 
-        scores = [self.action_score(a, total_visit_count) for a in range(self.action_size)]
+        scores = [
+            self.action_score(a, total_visit_count) for a in range(self.action_size)
+        ]
 
         return scores.index(max(scores))
 
