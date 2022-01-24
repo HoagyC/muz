@@ -48,18 +48,20 @@ class CartPred(nn.Module):
 
 
 class MuZeroCartNet(nn.Module):
-    def __init__(self, action_size, obs_size, latent_size):
+    def __init__(self, action_size: int, obs_size, config: dict):
         super().__init__()
         self.action_size = action_size
         self.obs_size = obs_size
-        self.latent_size = latent_size
+        self.latent_size = config['latent_size']
 
         self.pred_net = CartPred(self.action_size, self.latent_size)
         self.dyna_net = CartDyna(self.action_size, self.latent_size)
         self.repr_net = CartRepr(self.obs_size, self.latent_size)
 
         params = list(self.pred_net.parameters()) + list(self.dyna_net.parameters()) + list(self.repr_net.parameters())
-        self.optimizer = torch.optim.Adam(params, lr=1e-2)
+        self.optimizer = torch.optim.Adam(params, lr=config['learning_rate'])
+        
+        self.policy_loss = nn.CrossEntropyLoss()
 
     def predict(self, latent):
         policy, value = self.pred_net(latent)

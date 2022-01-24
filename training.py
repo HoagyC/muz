@@ -22,7 +22,7 @@ class GameRecord:
         self.actions.append(action)
         self.rewards.append(reward)
 
-        self.search_stats.append([c.num_visits for c in root.children if c])
+        self.search_stats.append([c.num_visits if c else 0 for c in root.children])
         self.values.append(root.average_val)
 
     def make_target(self, ndx: int, td_depth: int = 5):

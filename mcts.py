@@ -4,16 +4,20 @@ import random
 import torch
 from torch import nn
 
+from torch.utils.tensorboard import SummaryWriter
+
 
 class MCTS:
     def __init__(
-        self, action_size, obs_size, mu_net,
+        self, action_size, obs_size, mu_net, config
     ):
         self.action_size = action_size
         self.obs_size = obs_size
         self.max_reward = 1
         self.min_reward = 0
         self.mu_net = mu_net
+        
+        self.val_weight = config['val_weight']
 
     def search(self, n_simulations, current_frame):
         # with torch.no_grad():
@@ -62,9 +66,10 @@ class MCTS:
         return root_node
     
     def train(self, batch):
-        loss = 0
+        total_policy_loss, total_reward_loss, total_value_loss = 0, 0, 0
+        
         for image, action, targets in batch:
-            target_value, target_reward, target_policy = targets
+            target_value, target_reward, target_policy = [torch.tensor(x) for x in targets]
             hidden_state = self.mu_net.represent(torch.tensor(image).unsqueeze(0))
 
             one_hot_action = nn.functional.one_hot(
@@ -74,17 +79,29 @@ class MCTS:
             _, pred_reward = self.mu_net.dynamics(hidden_state, one_hot_action)
             pred_policy, pred_value = [x[0] for x in self.mu_net.predict(hidden_state)]
             
-            policy_loss = torch.einsum('i,j->', pred_policy, torch.tensor(target_policy))
+            policy_loss = self.mu_net.policy_loss(
+                pred_policy.unsqueeze(0), 
+                target_policy.unsqueeze(0))
             value_loss = torch.abs(pred_value - target_value) ** 2
             reward_loss = torch.abs(pred_reward - target_reward) ** 2
             
-            loss += policy_loss + value_loss + reward_loss
+            total_policy_loss += policy_loss
+            total_value_loss += value_loss
+            total_reward_loss += reward_loss
 
+        total_loss = total_policy_loss + total_reward_loss + (total_value_loss * self.val_weight)
         self.mu_net.optimizer.zero_grad()
-        loss.backward()
+        total_loss.backward()
         self.mu_net.optimizer.step()
 
-        return loss
+        metrics_dict = {
+            "Loss/total": total_loss,
+            "Loss/policy": total_policy_loss,
+            "Loss/reward": total_reward_loss,
+            "Loss/value": (total_value_loss * self.val_weight)
+        }
+              
+        return metrics_dict
 
 
 class TreeNode:

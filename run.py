@@ -1,28 +1,31 @@
+import datetime
+import os
 import time
+import yaml
 
 import gym
+
+from torch.utils.tensorboard import SummaryWriter
 
 from mcts import MCTS
 from models import MuZeroCartNet
 from training import GameRecord, ReplayBuffer
 
-LATENT_SIZE = 10
-MAX_FRAMES = 200
+config = yaml.safe_load(open('config.yaml', 'r'))
 
-env = gym.make("CartPole-v0")
+env = gym.make(config['env_name'])
 
 action_size = env.action_space.n
 obs_size = env.observation_space.shape[0]
 
-muzero_network = MuZeroCartNet(action_size, obs_size, LATENT_SIZE)
+muzero_network = MuZeroCartNet(action_size, obs_size, config)
 
-mcts = MCTS(action_size=action_size, obs_size=obs_size, mu_net=muzero_network)
+mcts = MCTS(action_size=action_size, obs_size=obs_size, mu_net=muzero_network, config=config)
 
-n_steps = 100
-n_simulations = 100
-n_games = 6
+log_name = os.path.join(config['log_dir'], datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S"))
+tb_writer = SummaryWriter(log_dir=log_name)
 
-memory = ReplayBuffer(size=5)
+memory = ReplayBuffer(size=config['buffer_size'])
 # open muz implementation uses a GameHistory class
 # with observation_history, action_history, reward_history
 # to_play which is who is to play in case it's a multiplayer, turn-based game
@@ -41,14 +44,14 @@ while True:
     frame = env.reset()
     game_record.observations.append(frame)
 
-    while not over and frames < MAX_FRAMES:
-        tree = mcts.search(n_simulations, frame)
+    while not over:
+        tree = mcts.search(config['n_simulations'], frame)
         action = tree.pick_action()
 
         # env.render("human")
         frame, score, over, _ = env.step(action)
-
-        game_record.add_step(frame, score, action, tree)
+            
+        game_record.add_step(frame, action, score, tree)
 
         # mcts.update()
 
@@ -56,8 +59,15 @@ while True:
 
     memory.save_game(game_record)
     batch = memory.get_batch()
-    loss = mcts.train(batch)
-    print(f"Completed game {total_games + 1:4} with score {frames:3}. Loss was {loss.item():5.3f}.")
+    metrics_dict = mcts.train(batch)
+    
+    for key, val in metrics_dict.items():
+        tb_writer.add_scalar(key, val, total_games)
+        
+    tb_writer.add_scalar('Score', frames, total_games)
+
+    print(f"Completed game {total_games + 1:4} with score {frames:3}. Loss was {metrics_dict['Loss/total'].item():5.3f}.")
     total_games += 1
+
 
 env.close()
