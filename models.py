@@ -9,6 +9,7 @@ class CartRepr(nn.Module):
         self.fc2 = nn.Linear(latent_size, latent_size)
 
     def forward(self, state):
+        state = state.to(dtype=torch.float32)
         out = self.fc1(state)
         out = torch.relu(out)
         out = self.fc2(out)

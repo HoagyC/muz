@@ -3,5 +3,5 @@ latent_size: 10
 log_dir: runs
 val_weight: 0.01
 n_simulations: 200
-buffer_size: 100
+buffer_size: 20
 learning_rate: 0.001
