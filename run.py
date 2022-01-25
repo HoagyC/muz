@@ -50,7 +50,8 @@ while True:
 
         # env.render("human")
         frame, score, over, _ = env.step(action)
-            
+
+    
         game_record.add_step(frame, action, score, tree)
 
         # mcts.update()
@@ -68,6 +69,10 @@ while True:
 
     print(f"Completed game {total_games + 1:4} with score {frames:3}. Loss was {metrics_dict['Loss/total'].item():5.3f}.")
     total_games += 1
+    
+    # import gc
+    # print(len(gc.get_objects()))
 
 
 env.close()
+

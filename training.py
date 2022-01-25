@@ -7,7 +7,7 @@ from mcts import TreeNode
 
 
 class GameRecord:
-    def __init__(self, action_size: int, discount: float = 1):
+    def __init__(self, action_size: int, discount: float = 0.8):
         self.action_size = action_size
         self.discount = discount
 
@@ -31,19 +31,19 @@ class GameRecord:
         # We therefore need to get the previous reward
         with torch.no_grad():
             if ndx == 0:
-                target_reward = 0
+                target_reward = torch.tensor(0, dtype=torch.float32)
             else:
-                target_reward = self.rewards[ndx - 1]
+                target_reward = torch.tensor(self.rewards[ndx], dtype=torch.float32)
 
             bootstrap_index = ndx + td_depth
             if bootstrap_index < len(self.values):
                 target_value = self.values[bootstrap_index] * self.discount ** td_depth
             else:
-                target_value = 0
+                target_value = torch.tensor(0, dtype=torch.float32)
 
             for i in range(td_depth):
                 if ndx + i < len(self.rewards):
-                    target_value += self.rewards[ndx] * self.discount ** td_depth
+                    target_value += torch.tensor(self.rewards[ndx + i] * self.discount ** td_depth, dtype=torch.float32)
                 else:
                     break
 

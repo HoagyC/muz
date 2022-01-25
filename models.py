@@ -18,6 +18,7 @@ class CartRepr(nn.Module):
 
 class CartDyna(nn.Module):
     def __init__(self, action_size, latent_size):
+        self.latent_size = latent_size
         super().__init__()
         self.fc1 = nn.Linear(latent_size + action_size, latent_size)
         self.fc2 = nn.Linear(latent_size, latent_size + 1)
@@ -43,7 +44,7 @@ class CartPred(nn.Module):
         out = self.fc1(latent)
         out = torch.relu(out)
         out = self.fc2(out)
-        policy = torch.softmax(out[:, : self.action_size], 1)
+        policy = torch.softmax(out[:, :self.action_size], 1)
         value = out[:, self.action_size]
         return policy, value
 
