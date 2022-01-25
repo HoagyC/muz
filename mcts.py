@@ -7,18 +7,31 @@ from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 
 
+class MinMax:
+    def __init__(self):
+        self.max_reward = -float('inf')
+        self.min_reward = float('inf')
+    
+    def update(self, val):
+        self.max_reward = max(val, self.max_reward)
+        self.min_reward = min(val, self.min_reward)
+
+    def normalize(self, val):
+        if self.max_reward > self.min_reward:
+            return (val - self.min_reward) / (self.max_reward - self.min_reward)
+
 class MCTS:
     def __init__(
         self, action_size, obs_size, mu_net, config
     ):
         self.action_size = action_size
         self.obs_size = obs_size
-        self.max_reward = 1
-        self.min_reward = 0
         self.mu_net = mu_net
         
         self.val_weight = config['val_weight']
         self.discount = config['discount']
+        
+        self.minmax = MinMax()
 
     def search(self, n_simulations, current_frame):
         # with torch.no_grad():
@@ -61,7 +74,8 @@ class MCTS:
                         latent=new_latent,
                         val_pred=new_val[0],
                         pol_pred=new_policy[0],
-                        reward=reward
+                        reward=reward,
+                        minmax=self.minmax
                     )
                     # print(action, reward)
                     new_node = True
@@ -121,10 +135,12 @@ class MCTS:
             node.num_visits += 1
             node.update_val(value)
             value = node.reward + (value * self.discount)
+            self.minmax.update(value)
+    
 
 
 class TreeNode:
-    def __init__(self, latent, action_size, val_pred=None, pol_pred=None, parent=None, reward=0, discount=1):
+    def __init__(self, latent, action_size, val_pred=None, pol_pred=None, parent=None, reward=0, discount=1, minmax=None):
         self.action_size = action_size
         self.children = [None] * action_size
         self.latent = latent
@@ -136,8 +152,9 @@ class TreeNode:
         self.reward = reward
         
         self.discount = discount
+        self.minmax = minmax
 
-    def insert(self, action_n, latent, val_pred, pol_pred, reward):
+    def insert(self, action_n, latent, val_pred, pol_pred, reward, minmax):
         if self.children[action_n] is None:
             new_child = TreeNode(
                 latent=latent,
@@ -146,7 +163,8 @@ class TreeNode:
                 action_size=self.action_size,
                 parent=self,
                 reward=reward,
-                discount=self.discount
+                discount=self.discount,
+                minmax=minmax
             )
             
             self.children[action_n] = new_child
@@ -178,13 +196,13 @@ class TreeNode:
         n = child.num_visits if child else 0
         q = child.average_val if child else 0
 
-        # p = self.pol_pred[action_n]
-        p = 1 / self.action_size
+        p = self.pol_pred[action_n]
+        #p = 1 / self.action_size
 
         vis_frac = math.sqrt(total_visit_count) / (1 + n)
         balance_term = c1 + math.log((total_visit_count + c2 + 1) / c2)
 
-        score = q + (p * vis_frac * balance_term)
+        score = self.minmax.normalize(q) + (p * vis_frac * balance_term)
         return score
 
     def pick_action(self):

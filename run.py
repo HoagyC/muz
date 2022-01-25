@@ -39,7 +39,7 @@ total_games = 0
 while True:
     frames = 0
     over = False
-    game_record = GameRecord(action_size)
+    game_record = GameRecord(action_size, discount=config['discount'])
 
     frame = env.reset()
     game_record.observations.append(frame)

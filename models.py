@@ -5,10 +5,13 @@ import torch.nn as nn
 class CartRepr(nn.Module):
     def __init__(self, obs_size, latent_size):
         super().__init__()
+        self.obs_size = obs_size
         self.fc1 = nn.Linear(obs_size, latent_size)
         self.fc2 = nn.Linear(latent_size, latent_size)
 
     def forward(self, state):
+        assert(state.dim() == 2)
+        assert(state.shape[1] == self.obs_size)
         state = state.to(dtype=torch.float32)
         out = self.fc1(state)
         out = torch.relu(out)
@@ -19,11 +22,14 @@ class CartRepr(nn.Module):
 class CartDyna(nn.Module):
     def __init__(self, action_size, latent_size):
         self.latent_size = latent_size
+        self.action_size = action_size
         super().__init__()
         self.fc1 = nn.Linear(latent_size + action_size, latent_size)
         self.fc2 = nn.Linear(latent_size, latent_size + 1)
 
     def forward(self, latent, action):
+        assert(latent.dim() == 2 and action.dim() == 2)
+        assert(latent.shape[1] == self.latent_size and action.shape[1] == self.action_size)
         out = torch.cat([action, latent], dim=1)
         out = self.fc1(out)
         out = torch.relu(out)
@@ -37,10 +43,13 @@ class CartPred(nn.Module):
     def __init__(self, action_size, latent_size):
         super().__init__()
         self.action_size = action_size
+        self.latent_size = latent_size
         self.fc1 = nn.Linear(latent_size, latent_size)
         self.fc2 = nn.Linear(latent_size, action_size + 1)
 
     def forward(self, latent):
+        assert(latent.dim() == 2)
+        assert(latent.shape[1] == self.latent_size)
         out = self.fc1(latent)
         out = torch.relu(out)
         out = self.fc2(out)
