@@ -3,8 +3,6 @@ from random import randrange
 import numpy as np
 import torch 
 
-from mcts import TreeNode
-
 
 class GameRecord:
     def __init__(self, action_size: int, discount: float = 0.8):
@@ -17,7 +15,7 @@ class GameRecord:
         self.search_stats = []
         self.values = []
 
-    def add_step(self, obs: np.ndarray, action: int, reward: int, root: TreeNode):
+    def add_step(self, obs: np.ndarray, action: int, reward: int, root):
         self.observations.append(obs)
         self.actions.append(action)
         self.rewards.append(reward)

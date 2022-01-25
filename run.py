@@ -45,13 +45,13 @@ while True:
     game_record.observations.append(frame)
 
     while not over:
+        tree = None
         tree = mcts.search(config['n_simulations'], frame)
         action = tree.pick_action()
 
         # env.render("human")
         frame, score, over, _ = env.step(action)
 
-    
         game_record.add_step(frame, action, score, tree)
 
         # mcts.update()
@@ -59,8 +59,7 @@ while True:
         frames += 1
 
     memory.save_game(game_record)
-    batch = memory.get_batch()
-    metrics_dict = mcts.train(batch)
+    metrics_dict = mcts.train(memory, config['n_batches'])
     
     for key, val in metrics_dict.items():
         tb_writer.add_scalar(key, val, total_games)
@@ -69,9 +68,6 @@ while True:
 
     print(f"Completed game {total_games + 1:4} with score {frames:3}. Loss was {metrics_dict['Loss/total'].item():5.3f}.")
     total_games += 1
-    
-    # import gc
-    # print(len(gc.get_objects()))
 
 
 env.close()

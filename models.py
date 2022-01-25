@@ -70,7 +70,7 @@ class MuZeroCartNet(nn.Module):
         self.repr_net = CartRepr(self.obs_size, self.latent_size)
 
         params = list(self.pred_net.parameters()) + list(self.dyna_net.parameters()) + list(self.repr_net.parameters())
-        self.optimizer = torch.optim.Adam(params, lr=config['learning_rate'])
+        self.optimizer = torch.optim.SGD(params, lr=config['learning_rate'])
         
         self.policy_loss = nn.CrossEntropyLoss()
 

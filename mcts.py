@@ -6,6 +6,8 @@ from torch import nn
 
 from torch.utils.tensorboard import SummaryWriter
 
+from training import ReplayBuffer
+
 
 class MinMax:
     def __init__(self):
@@ -52,77 +54,87 @@ class MCTS:
         )
 
         for i in range(n_simulations):
-            current_node = root_node
-            new_node = False
-            search_list = [current_node]
-            while not new_node:
-                value_pred, policy_pred, latent = (
-                    current_node.val_pred,
-                    current_node.pol_pred,
-                    current_node.latent,
-                )
-                action = current_node.pick_action()
-                if current_node.children[action] is None:
-                    action_t = nn.functional.one_hot(
-                        torch.tensor([action]), num_classes=self.action_size
+            with torch.no_grad():
+                current_node = root_node
+                new_node = False
+                search_list = [current_node]
+                while not new_node:
+                    value_pred, policy_pred, latent = (
+                        current_node.val_pred,
+                        current_node.pol_pred,
+                        current_node.latent,
                     )
-                    new_latent, reward = [
-                        x[0] for x in
-                        self.mu_net.dynamics(latent.unsqueeze(0), action_t)
-                    ]
+                    action = current_node.pick_action()
+                    if current_node.children[action] is None:
+                        action_t = nn.functional.one_hot(
+                            torch.tensor([action]), num_classes=self.action_size
+                        )
+                        new_latent, reward = [
+                            x[0] for x in
+                            self.mu_net.dynamics(latent.unsqueeze(0), action_t)
+                        ]
+                        
+                        new_policy, new_val = self.mu_net.predict(new_latent.unsqueeze(0))
+                        current_node.insert(
+                            action_n=action,
+                            latent=new_latent,
+                            val_pred=new_val[0],
+                            pol_pred=new_policy[0],
+                            reward=reward,
+                            minmax=self.minmax
+                        )
+                        # print(action, reward)
+                        new_node = True
+                    else:
+                        current_node = current_node.children[action]
                     
-                    new_policy, new_val = self.mu_net.predict(new_latent.unsqueeze(0))
-                    current_node.insert(
-                        action_n=action,
-                        latent=new_latent,
-                        val_pred=new_val[0],
-                        pol_pred=new_policy[0],
-                        reward=reward,
-                        minmax=self.minmax
-                    )
-                    # print(action, reward)
-                    new_node = True
-                else:
-                    current_node = current_node.children[action]
+                    search_list.append(current_node)
                 
-                search_list.append(current_node)
-            
-            self.backpropagate(search_list, new_val[0])
+                self.backpropagate(search_list, new_val[0])
         return root_node
     
-    def train(self, batch):
-        total_policy_loss, total_reward_loss, total_value_loss = 0, 0, 0
-        
-        for image, action, targets in batch:
-            target_value, target_reward, target_policy = [torch.tensor(x) for x in targets]
-            hidden_state = self.mu_net.represent(torch.tensor(image).unsqueeze(0))
-
-            one_hot_action = nn.functional.one_hot(
-                torch.tensor([action]).to(dtype=torch.int64), 
-                num_classes=self.action_size
-            )
-            _, pred_reward = self.mu_net.dynamics(hidden_state, one_hot_action)
-            pred_reward = pred_reward[0]
-            pred_policy, pred_value = [x[0] for x in self.mu_net.predict(hidden_state)]
+    def train(self, buffer: ReplayBuffer, n_batches: int):
+        total_loss, total_policy_loss, total_reward_loss, total_value_loss = 0, 0, 0, 0
             
-            policy_loss = self.mu_net.policy_loss(
-                pred_policy.unsqueeze(0), 
-                target_policy.unsqueeze(0))
-
-            value_loss = torch.abs(pred_value - target_value) ** 2
-            reward_loss = torch.abs(pred_reward - target_reward) ** 2
-            # print('reward', action, pred_reward, target_reward)
-            # print('value', action, pred_value, target_value)
+        for _ in range(n_batches):
+            batch_policy_loss, batch_reward_loss, batch_value_loss = 0, 0, 0
             
-            total_policy_loss += policy_loss
-            total_value_loss += value_loss
-            total_reward_loss += reward_loss
+            batch = buffer.get_batch()
+            for image, action, targets in batch:
+                target_value, target_reward, target_policy = [torch.tensor(x) for x in targets]
+                hidden_state = self.mu_net.represent(torch.tensor(image).unsqueeze(0))
 
-        total_loss = total_policy_loss + total_reward_loss + (total_value_loss * self.val_weight)
-        # total_loss = total_reward_loss
-        self.mu_net.optimizer.zero_grad()
-        total_loss.backward()
-        self.mu_net.optimizer.step()
+                one_hot_action = nn.functional.one_hot(
+                    torch.tensor([action]).to(dtype=torch.int64), 
+                    num_classes=self.action_size
+                )
+                _, pred_reward = self.mu_net.dynamics(hidden_state, one_hot_action)
+                pred_reward = pred_reward[0]
+                pred_policy, pred_value = [x[0] for x in self.mu_net.predict(hidden_state)]
+                
+                policy_loss = self.mu_net.policy_loss(
+                    pred_policy.unsqueeze(0), 
+                    target_policy.unsqueeze(0))
+
+                value_loss = torch.abs(pred_value - target_value) ** 2
+                reward_loss = torch.abs(pred_reward - target_reward) ** 2
+                # print('reward', action, pred_reward, target_reward)
+                # print('value', action, pred_value, target_value)
+                
+                batch_policy_loss += policy_loss
+                batch_value_loss += value_loss
+                batch_reward_loss += reward_loss
+
+            batch_loss = batch_policy_loss + batch_reward_loss + (batch_value_loss * self.val_weight)
+            # total_loss = total_reward_loss
+            self.mu_net.optimizer.zero_grad()
+            batch_loss.backward()
+            self.mu_net.optimizer.step()
+            
+            total_loss += batch_loss
+            total_value_loss += batch_value_loss
+            total_policy_loss += batch_policy_loss
+            total_reward_loss += batch_reward_loss
 
         metrics_dict = {
             "Loss/total": total_loss,
@@ -139,7 +151,6 @@ class MCTS:
             node.update_val(value)
             value = node.reward + (value * self.discount)
             self.minmax.update(value)
-    
 
 
 class TreeNode:
