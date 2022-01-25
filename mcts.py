@@ -19,6 +19,8 @@ class MinMax:
     def normalize(self, val):
         if self.max_reward > self.min_reward:
             return (val - self.min_reward) / (self.max_reward - self.min_reward)
+        else:
+            return val
 
 class MCTS:
     def __init__(
@@ -45,7 +47,8 @@ class MCTS:
             action_size=self.action_size,
             val_pred=init_val[0],
             pol_pred=init_policy[0],
-            discount=self.discount
+            discount=self.discount,
+            minmax=self.minmax
         )
 
         for i in range(n_simulations):
