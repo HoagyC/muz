@@ -1,8 +1,6 @@
 import math
 import random
 
-import numpy as np
-
 import torch
 from torch import nn
 
@@ -36,7 +34,6 @@ class MCTS:
         
         self.val_weight = config['val_weight']
         self.discount = config['discount']
-        self.batch_size = config['batch_size']
         
         self.minmax = MinMax()
 
@@ -72,7 +69,6 @@ class MCTS:
                         action_t = nn.functional.one_hot(
                             torch.tensor([action]), num_classes=self.action_size
                         )
-                        
                         new_latent, reward = [
                             x[0] for x in
                             self.mu_net.dynamics(latent.unsqueeze(0), action_t)
@@ -103,7 +99,7 @@ class MCTS:
         for _ in range(n_batches):
             batch_policy_loss, batch_reward_loss, batch_value_loss = 0, 0, 0
             
-            batch = buffer.get_batch(batch_size=self.batch_size)
+            batch = buffer.get_batch(batch_size=self.config['batch_size'])
             for image, action, targets in batch:
                 target_value, target_reward, target_policy = [torch.tensor(x) for x in targets]
                 hidden_state = self.mu_net.represent(torch.tensor(image).unsqueeze(0))
@@ -134,8 +130,7 @@ class MCTS:
             self.mu_net.optimizer.zero_grad()
             batch_loss.backward()
             self.mu_net.optimizer.step()
-                    # score = self.minmax.normalize(q) + (p * vis_frac * balance_term)
-
+            
             total_loss += batch_loss
             total_value_loss += batch_value_loss
             total_policy_loss += batch_policy_loss
@@ -215,16 +210,13 @@ class TreeNode:
         n = child.num_visits if child else 0
         q = child.average_val if child else 0
 
-        p = self.pol_pred[action_n]  # p here is the prior - the expectation of what the the policy will look like
+        p = self.pol_pred[action_n] # p here is the prior - the expectation of what the the policy will look like
         # p = 1 / self.action_size
 
         vis_frac = math.sqrt(total_visit_count) / (1 + n)
         balance_term = c1 + math.log((total_visit_count + c2 + 1) / c2)
 
-        # score = self.minmax.normalize(q) + (p * vis_frac * balance_term)
-        
-        score = self.minmax.normalize(q) + (vis_frac * balance_term)
-
+        score = self.minmax.normalize(q) + (p * vis_frac * balance_term)
         return score
 
     def pick_action(self):
@@ -235,18 +227,6 @@ class TreeNode:
         ]
 
         return scores.index(max(scores))
-    
-    def pick_game_action(self, temperature):
-        visit_counts = [a.num_visits if a else 0 for a in self.children]
-        print(visit_counts, self.val_pred, [c.val_pred for c in self.children])
-        
-        scores = [(vc + 1) ** (1 / temperature) for vc in visit_counts]
-        total_score = sum(scores)
-        adjusted_scores = [score / total_score for score in scores]
-        
-        action = np.random.choice(self.action_size, p=adjusted_scores)
-        
-        return action
 
 
 if __name__ == "__main__":
