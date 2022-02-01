@@ -139,7 +139,7 @@ class MCTS:
                     batch_value_loss += value_loss
                     batch_reward_loss += reward_loss
                     
-                    print(f'p {policy_loss}, v {value_loss}, r {reward_loss}')
+                    # print(f'p {policy_loss}, v {value_loss}, r {reward_loss}')
 
             batch_loss = batch_policy_loss + batch_reward_loss + (batch_value_loss * self.val_weight)
             # total_loss = total_reward_loss
