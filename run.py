@@ -14,7 +14,7 @@ from training import GameRecord, ReplayBuffer
 config = yaml.safe_load(open('config.yaml', 'r'))
 
 env = gym.make(config['env_name'])
-
+    
 action_size = env.action_space.n
 obs_size = env.observation_space.shape[0]
 
@@ -46,7 +46,7 @@ while True:
 
     while not over:
         tree = mcts.search(config['n_simulations'], frame)
-        action = tree.pick_game_action(temperature=2)
+        action = tree.pick_game_action(temperature=1)
 
         env.render("human")
         frame, score, over, _ = env.step(action)

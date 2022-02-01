@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+import random
 
 class CartRepr(nn.Module):
     def __init__(self, obs_size, latent_size):

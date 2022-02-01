@@ -23,34 +23,56 @@ class GameRecord:
         self.search_stats.append([c.num_visits if c else 0 for c in root.children])
         self.values.append(root.average_val)
 
-    def make_target(self, ndx: int, td_depth: int = 5):
+    def make_target(self, ndx: int, reward_depth: int = 5, rollout_depth: int = 5):
+        # ndx is where in the record of the game we start
+        # reward_depth is how far into the future we use the actual reward - beyond this we use predicted value
+        
+        # rollout_depth is how many 
+        # it acts like an additional dimension of batching when we make the target but the crucial difference is that
+        # when we train, we will use a hidden state by repeated application of the dynamics function from the init_image
+        # rather than creating a new hidden state from the game obs at the time
+        # this is necessary to train the dynamics function to give useful information for predicting the value
+        
         # When we predict the reward, we're predicting the reward from reaching the state
         # Not the reward from performing a subsequent action
         # We therefore need to get the previous reward
+        
         with torch.no_grad():
-            if ndx == 0:
-                target_reward = torch.tensor(0, dtype=torch.float32)
-            else:
-                target_reward = torch.tensor(self.rewards[ndx], dtype=torch.float32)
-
-            bootstrap_index = ndx + td_depth
-            if bootstrap_index < len(self.values):
-                target_value = self.values[bootstrap_index] * self.discount ** td_depth
-            else:
-                target_value = torch.tensor(0, dtype=torch.float32)
-
-            for i in range(td_depth):
-                if ndx + i < len(self.rewards):
-                    target_value += torch.tensor(self.rewards[ndx + i] * self.discount ** td_depth, dtype=torch.float32)
+            # We get a reward, value and policy for each step in the rollout of our hidden state
+            target_rewards = []
+            target_values = []
+            target_policies = []
+            
+            game_len = len(self.search_stats)
+            rollout_depth = min(rollout_depth, game_len - ndx)  # Make sure we don't try to roll out beyond end of game
+        
+            for i in range(rollout_depth):
+                if ndx + i == 0:
+                    target_rewards.append(torch.tensor(0, dtype=torch.float32))
                 else:
-                    break
+                    target_rewards.append(self.rewards[ndx + i])
 
-            total_searches = sum(self.search_stats[ndx])
-            target_policy = [x / total_searches for x in self.search_stats[ndx]]
+                bootstrap_index = ndx + reward_depth + i
+                if bootstrap_index < len(self.values):
+                    target_value = self.values[bootstrap_index] * self.discount ** reward_depth
+                else:
+                    target_value = 0
+
+                for j in range(reward_depth):
+                    if ndx + i + j < len(self.rewards):
+                        target_value += self.rewards[ndx + i + j] * self.discount ** reward_depth
+                    else:
+                        break
+                    
+                target_values.append(target_value)
+                
+                total_searches = sum(self.search_stats[ndx + i])
+                target_policies.append([x / total_searches for x in self.search_stats[ndx + i]])
+                    
             init_obs = self.observations[ndx]
-            action = self.actions[ndx]
+            actions = self.actions[ndx:ndx + rollout_depth]
 
-            return init_obs, action, (target_value, target_reward, target_policy)
+            return init_obs, actions, target_values, target_rewards, target_policies
 
 
 class ReplayBuffer:
@@ -84,8 +106,9 @@ class ReplayBuffer:
         for val in start_vals:
             buf_ndx, game_ndx = self.get_ndxs(val)
             game = self.buffer[buf_ndx]
-            image, action, target = game.make_target(game_ndx)
-            batch.append((image, action, target))
+            image, actions, target_values, target_rewards, target_policies = game.make_target(game_ndx)
+            
+            batch.append((image, actions, target_values, target_rewards, target_policies))
 
         return batch
 

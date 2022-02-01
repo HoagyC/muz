@@ -104,30 +104,42 @@ class MCTS:
             batch_policy_loss, batch_reward_loss, batch_value_loss = 0, 0, 0
             
             batch = buffer.get_batch(batch_size=self.batch_size)
-            for image, action, targets in batch:
-                target_value, target_reward, target_policy = [torch.tensor(x) for x in targets]
-                hidden_state = self.mu_net.represent(torch.tensor(image).unsqueeze(0))
+            for init_image, actions, target_values, target_rewards, target_policies in batch:
+                assert len(actions) == len(target_policies) == len(target_rewards) == len(target_values)
+                rollout_depth = len(actions)
+                hidden_state = self.mu_net.represent(torch.tensor(init_image).unsqueeze(0))[0]
 
-                one_hot_action = nn.functional.one_hot(
-                    torch.tensor([action]).to(dtype=torch.int64), 
-                    num_classes=self.action_size
-                )
-                _, pred_reward = self.mu_net.dynamics(hidden_state, one_hot_action)
-                pred_reward = pred_reward[0]
-                pred_policy, pred_value = [x[0] for x in self.mu_net.predict(hidden_state)]
-                
-                policy_loss = self.mu_net.policy_loss(
-                    pred_policy.unsqueeze(0), 
-                    target_policy.unsqueeze(0))
-
-                value_loss = torch.abs(pred_value - target_value) ** 2
-                reward_loss = torch.abs(pred_reward - target_reward) ** 2
-                # print('reward', action, pred_reward, target_reward)
-                # print('value', action, pred_value, target_value)
-                
-                batch_policy_loss += policy_loss
-                batch_value_loss += value_loss
-                batch_reward_loss += reward_loss
+                for i in range(rollout_depth):
+                    target_value = torch.tensor(target_values[i], dtype=torch.float32)
+                    target_reward = torch.tensor(target_rewards[i], dtype=torch.float32)
+                    target_policy = torch.tensor(target_policies[i], dtype=torch.float32)
+                    
+                    one_hot_action = nn.functional.one_hot(
+                        torch.tensor([actions[i]]).to(dtype=torch.int64), 
+                        num_classes=self.action_size
+                    )
+                    
+                    pred_policy, pred_value = [x[0] for x in self.mu_net.predict(hidden_state.unsqueeze(0))]
+                    hidden_state, pred_reward = [x[0] for x in self.mu_net.dynamics(
+                        hidden_state.unsqueeze(0), one_hot_action)]
+                                        
+                    policy_loss = self.mu_net.policy_loss(
+                        pred_policy.unsqueeze(0),
+                        target_policy.unsqueeze(0))
+                    
+                    hidden_state.register_hook(lambda grad: grad * 0.5)
+                    
+                    value_loss = torch.abs(pred_value - target_value) ** 2
+                    reward_loss = torch.abs(pred_reward - target_reward) ** 2
+            
+                    # print('reward', action, pred_reward, target_reward)
+                    # print('value', action, pred_value, target_value)
+                    
+                    batch_policy_loss += policy_loss
+                    batch_value_loss += value_loss
+                    batch_reward_loss += reward_loss
+                    
+                    print(f'p {policy_loss}, v {value_loss}, r {reward_loss}')
 
             batch_loss = batch_policy_loss + batch_reward_loss + (batch_value_loss * self.val_weight)
             # total_loss = total_reward_loss
@@ -233,12 +245,15 @@ class TreeNode:
         scores = [
             self.action_score(a, total_visit_count) for a in range(self.action_size)
         ]
+        maxscore = max(scores)
 
-        return scores.index(max(scores))
+        action = np.random.choice([a for a in range(self.action_size) if scores[a] == maxscore])
+        # print(action)
+        return action
     
     def pick_game_action(self, temperature):
         visit_counts = [a.num_visits if a else 0 for a in self.children]
-        print(visit_counts, self.val_pred, [c.val_pred for c in self.children])
+        # print(visit_counts, self.val_pred, [c.val_pred if c else 0 for c in self.children])
         
         scores = [(vc + 1) ** (1 / temperature) for vc in visit_counts]
         total_score = sum(scores)
