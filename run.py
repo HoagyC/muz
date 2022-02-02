@@ -54,7 +54,7 @@ while True:
         tree = mcts.search(config["n_simulations"], frame)
         action = tree.pick_game_action(temperature=temperature)
 
-        env.render("human")
+        # env.render("human")
         frame, score, over, _ = env.step(action)
 
         game_record.add_step(frame, action, score, tree)
