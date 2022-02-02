@@ -13,17 +13,26 @@ from models import scalar_to_support, support_to_scalar
 
 
 class MinMax:
+    # This class tracks the smallest and largest values that have been seen
+    # so that it can normalize the values
+    # this is for when deciding which branch of the tree to explore
+    # by putting the values on a 0-1 scale, they become comparable with the probabilities
+    # given by the prior
+
+    # comes pretty much straight from the MuZero pseudocode
     def __init__(self):
-        self.max_reward = -float("inf")
-        self.min_reward = float("inf")
+        # initialize at +-inf so that any value will supercede the max/min
+        self.max_value = -float("inf")
+        self.min_value = float("inf")
 
     def update(self, val):
-        self.max_reward = max(val, self.max_reward)
-        self.min_reward = min(val, self.min_reward)
+        self.max_value = max(val, self.max_value)
+        self.min_value = min(val, self.min_value)
 
     def normalize(self, val):
-        if self.max_reward > self.min_reward:
-            return (val - self.min_reward) / (self.max_reward - self.min_reward)
+        # places val between 0 - 1 linearly depending on where it sits between min_value and max_value
+        if self.max_value > self.min_value:
+            return (val - self.min_value) / (self.max_value - self.min_value)
         else:
             return val
 
@@ -32,12 +41,11 @@ class MCTS:
     def __init__(self, action_size, obs_size, mu_net, config):
         self.action_size = action_size
         self.obs_size = obs_size
-        self.mu_net = mu_net
+        self.mu_net = mu_net  # a class which holds the three functions as set out in
 
         self.val_weight = config["val_weight"]
         self.discount = config["discount"]
         self.batch_size = config["batch_size"]
-        self.grad_clip = config["grad_clip"]
 
         self.minmax = MinMax()
 
@@ -50,13 +58,14 @@ class MCTS:
         init_policy, init_val = [
             x[0] for x in self.mu_net.predict(init_latent.unsqueeze(0))
         ]
+        init_policy_probs = torch.softmax(init_policy, 0)
 
         init_val = support_to_scalar(torch.softmax(init_val, 0))
         root_node = TreeNode(
             latent=init_latent,
             action_size=self.action_size,
             val_pred=init_val,
-            pol_pred=init_policy,
+            pol_pred=init_policy_probs,
             discount=self.discount,
             minmax=self.minmax,
         )
@@ -89,11 +98,13 @@ class MCTS:
                         ]
                         new_val = support_to_scalar(torch.softmax(new_val, 0))
 
+                        policy_probs = torch.softmax(new_policy, 0)
+
                         current_node.insert(
                             action_n=action,
                             latent=new_latent,
                             val_pred=new_val,
-                            pol_pred=new_policy,
+                            pol_pred=policy_probs,
                             reward=reward,
                             minmax=self.minmax,
                         )
@@ -201,12 +212,7 @@ class MCTS:
             self.mu_net.optimizer.zero_grad()
             batch_loss.backward()
 
-            # nn.utils.clip_grad_norm_(self.mu_net.pred_net.parameters(), self.grad_clip)
-            # nn.utils.clip_grad_norm_(self.mu_net.dyna_net.parameters(), self.grad_clip)
-            # nn.utils.clip_grad_norm_(self.mu_net.repr_net.parameters(), self.grad_clip)
-
             self.mu_net.optimizer.step()
-            # score = self.minmax.normalize(q) + (p * vis_frac * balance_term)
 
             total_loss += batch_loss
             total_value_loss += batch_value_loss
@@ -309,9 +315,7 @@ class TreeNode:
         vis_frac = math.sqrt(total_visit_count) / (1 + n)
         balance_term = c1 + math.log((total_visit_count + c2 + 1) / c2)
 
-        # score = self.minmax.normalize(q) + (p * vis_frac * balance_term)
-
-        score = self.minmax.normalize(q) + (vis_frac * balance_term)
+        score = self.minmax.normalize(q) + (p * vis_frac * balance_term)
 
         return score
 
@@ -331,12 +335,6 @@ class TreeNode:
     def pick_game_action(self, temperature):
         visit_counts = [a.num_visits if a else 0 for a in self.children]
         val_preds = [c.val_pred if c else 0 for c in self.children]
-        # print(
-        #     visit_counts,
-        #     self.val_pred,
-        #     val_preds,
-        #     "L" if val_preds[0] > val_preds[1] else "R",
-        # )
 
         if temperature == 0:
             max_vis = max(visit_counts)
@@ -350,6 +348,20 @@ class TreeNode:
             adjusted_scores = [score / total_score for score in scores]
 
             action = np.random.choice(self.action_size, p=adjusted_scores)
+
+            print(
+                visit_counts,
+                self.val_pred,
+                val_preds,
+                "L" if val_preds[0] > val_preds[1] else "R",
+                "   ",
+                "T"
+                if action == 0
+                and val_preds[0] > val_preds[1]
+                or action == 1
+                and val_preds[0] <= val_preds[1]
+                else "F",
+            )
 
         return action
 

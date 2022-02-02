@@ -9,4 +9,3 @@ discount: 0.9
 n_batches: 30
 batch_size: 10
 support_width: 10
-grad_clip: 10

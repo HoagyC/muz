@@ -48,7 +48,7 @@ while True:
     frame = env.reset()
     game_record.observations.append(frame)
 
-    temperature = 0.25
+    temperature = 20 / (total_games + 20)
 
     while not over:
         tree = mcts.search(config["n_simulations"], frame)
