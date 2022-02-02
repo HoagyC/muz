@@ -9,6 +9,7 @@ from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 
 from training import ReplayBuffer
+from models import scalar_to_support, support_to_scalar
 
 
 class MinMax:
@@ -45,12 +46,16 @@ class MCTS:
 
         frame_t = torch.tensor(current_frame).unsqueeze(0)
         init_latent = self.mu_net.represent(frame_t)[0]
-        init_policy, init_val = self.mu_net.predict(init_latent.unsqueeze(0))
+        init_policy, init_val = [
+            x[0] for x in self.mu_net.predict(init_latent.unsqueeze(0))
+        ]
+
+        init_val = support_to_scalar(init_val)
         root_node = TreeNode(
             latent=init_latent,
             action_size=self.action_size,
-            val_pred=init_val[0],
-            pol_pred=init_policy[0],
+            val_pred=init_val,
+            pol_pred=init_policy,
             discount=self.discount,
             minmax=self.minmax,
         )
@@ -76,15 +81,18 @@ class MCTS:
                             x[0]
                             for x in self.mu_net.dynamics(latent.unsqueeze(0), action_t)
                         ]
+                        reward = support_to_scalar(reward)
 
-                        new_policy, new_val = self.mu_net.predict(
-                            new_latent.unsqueeze(0)
-                        )
+                        new_policy, new_val = [
+                            x[0] for x in self.mu_net.predict(new_latent.unsqueeze(0))
+                        ]
+                        new_val = support_to_scalar(new_val)
+
                         current_node.insert(
                             action_n=action,
                             latent=new_latent,
-                            val_pred=new_val[0],
-                            pol_pred=new_policy[0],
+                            val_pred=new_val,
+                            pol_pred=new_policy,
                             reward=reward,
                             minmax=self.minmax,
                         )
@@ -95,7 +103,7 @@ class MCTS:
 
                     search_list.append(current_node)
 
-                self.backpropagate(search_list, new_val[0])
+                self.backpropagate(search_list, new_val)
         return root_node
 
     def train(self, buffer: ReplayBuffer, n_batches: int):
@@ -138,6 +146,7 @@ class MCTS:
                     pred_policy, pred_value = [
                         x[0] for x in self.mu_net.predict(hidden_state.unsqueeze(0))
                     ]
+
                     hidden_state, pred_reward = [
                         x[0]
                         for x in self.mu_net.dynamics(
@@ -151,10 +160,17 @@ class MCTS:
 
                     hidden_state.register_hook(lambda grad: grad * 0.5)
 
+                    pred_value = support_to_scalar(pred_value)
+                    pred_reward = support_to_scalar(pred_reward)
+
                     value_loss = torch.abs(pred_value - target_value) ** 2
                     reward_loss = torch.abs(pred_reward - target_reward) ** 2
 
-                    print(f'r {pred_reward:3.3}, {target_reward:3.3}, v {pred_value:5.3}, {target_value:5.3}')
+                    print(
+                        f"r p{pred_reward:6.2} t{target_reward:6.2}, v p{pred_value:6.3} t{target_value:6.3}"
+                    )
+
+                    # print(f'r {pred_reward:3.3}, {target_reward:3.3}, v {pred_value:5.3}, {target_value:5.3}')
 
                     batch_policy_loss += policy_loss
                     batch_value_loss += value_loss

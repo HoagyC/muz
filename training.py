@@ -68,6 +68,10 @@ class GameRecord:
                     else:
                         break
 
+                if target_value > 1 / (1 - self.discount):
+                    print(target_value, self.values[bootstrap_index])
+                    target_value = 1 / (1 - self.discount)
+
                 target_values.append(target_value)
 
                 total_searches = sum(self.search_stats[ndx + i])

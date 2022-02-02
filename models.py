@@ -21,12 +21,13 @@ class CartRepr(nn.Module):
 
 
 class CartDyna(nn.Module):
-    def __init__(self, action_size, latent_size):
+    def __init__(self, action_size, latent_size, support_width):
         self.latent_size = latent_size
         self.action_size = action_size
+        self.full_width = (2 * support_width) + 1
         super().__init__()
         self.fc1 = nn.Linear(latent_size + action_size, latent_size)
-        self.fc2 = nn.Linear(latent_size, latent_size + 1)
+        self.fc2 = nn.Linear(latent_size, latent_size + self.full_width)
 
     def forward(self, latent, action):
         assert latent.dim() == 2 and action.dim() == 2
@@ -38,18 +39,19 @@ class CartDyna(nn.Module):
         out = self.fc1(out)
         out = torch.relu(out)
         out = self.fc2(out)
-        new_latent = out[:, :-1]
-        reward = out[:, -1]
+        new_latent = out[:, : self.latent_size]
+        reward = torch.softmax(out[:, self.latent_size :], 1)
         return new_latent, reward
 
 
 class CartPred(nn.Module):
-    def __init__(self, action_size, latent_size):
+    def __init__(self, action_size, latent_size, support_width):
         super().__init__()
         self.action_size = action_size
         self.latent_size = latent_size
+        self.full_width = (support_width * 2) + 1
         self.fc1 = nn.Linear(latent_size, latent_size)
-        self.fc2 = nn.Linear(latent_size, action_size + 1)
+        self.fc2 = nn.Linear(latent_size, action_size + self.full_width)
 
     def forward(self, latent):
         assert latent.dim() == 2
@@ -58,7 +60,7 @@ class CartPred(nn.Module):
         out = torch.relu(out)
         out = self.fc2(out)
         policy = torch.softmax(out[:, : self.action_size], 1)
-        value = out[:, self.action_size]
+        value = torch.softmax(out[:, self.action_size :], 1)
         return policy, value
 
 
@@ -68,9 +70,10 @@ class MuZeroCartNet(nn.Module):
         self.action_size = action_size
         self.obs_size = obs_size
         self.latent_size = config["latent_size"]
+        self.support_width = config["support_width"]
 
-        self.pred_net = CartPred(self.action_size, self.latent_size)
-        self.dyna_net = CartDyna(self.action_size, self.latent_size)
+        self.pred_net = CartPred(self.action_size, self.latent_size, self.support_width)
+        self.dyna_net = CartDyna(self.action_size, self.latent_size, self.support_width)
         self.repr_net = CartRepr(self.obs_size, self.latent_size)
 
         params = (
@@ -78,7 +81,9 @@ class MuZeroCartNet(nn.Module):
             + list(self.dyna_net.parameters())
             + list(self.repr_net.parameters())
         )
-        self.optimizer = torch.optim.SGD(params, lr=config["learning_rate"])
+        self.optimizer = torch.optim.SGD(
+            params, lr=config["learning_rate"], weight_decay=1e-4
+        )
 
         self.policy_loss = nn.CrossEntropyLoss()
 
@@ -183,3 +188,40 @@ class DynamicsNetwork(nn.Module):
         out = self.fc2(out)
         out = out.view(6, 6, 64)
         return out
+
+
+def support_to_scalar(support, epsilon=0.001):
+    half_width = int((len(support) - 1) / 2)
+    vals = torch.Tensor(range(-half_width, half_width + 1))
+    out_val = torch.einsum("i,i -> ", vals, support)
+
+    sign_out = 1 if out_val >= 0 else -1
+
+    num = torch.sqrt(1 + 4 * epsilon * (torch.abs(out_val) + 1 + epsilon)) - 1
+    res = (num / (2 * epsilon)) ** 2
+
+    output = sign_out * (res - 1)
+
+    return output
+
+
+def scalar_to_support(scalar: torch.Tensor, epsilon=0.001, max_val: int = 40):
+    # Scaling the value function and converting to discrete support as found in
+    # Appendix F if MuZero
+
+    sign_x = 1 if scalar >= 0 else -1
+    h_x = torch.sign(scalar) * (
+        torch.sqrt(torch.abs(scalar) + 1) - 1 + epsilon * scalar
+    )
+
+    upper_ndx = (torch.ceil(h_x) + max_val).to(dtype=torch.int64)
+    lower_ndx = (torch.floor(h_x) + max_val).to(dtype=torch.int64)
+    ratio = h_x % 1
+    support = torch.zeros(2 * max_val + 1)
+    if upper_ndx == lower_ndx:
+        support[upper_ndx] = 1
+    else:
+        support[lower_ndx] = 1 - ratio
+        support[upper_ndx] = ratio
+
+    return support
