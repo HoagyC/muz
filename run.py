@@ -48,13 +48,13 @@ while True:
     frame = env.reset()
     game_record.observations.append(frame)
 
-    temperature = 0 if total_games % 10 == 0 else 1
+    temperature = 0.25
 
     while not over:
         tree = mcts.search(config["n_simulations"], frame)
         action = tree.pick_game_action(temperature=temperature)
 
-        # env.render("human")
+        env.render("human")
         frame, score, over, _ = env.step(action)
 
         game_record.add_step(frame, action, score, tree)
@@ -71,6 +71,8 @@ while True:
 
     tb_writer.add_scalar("Score", frames, total_games)
 
+    # print(mcts.mu_net.dyna_net.fc1.weight.data)
+    # print(mcts.mu_net.dyna_net.fc1.weight.grad)
     print(
         f"Completed game {total_games + 1:4} with score {frames:3}. Loss was {metrics_dict['Loss/total'].item():5.3f}."
     )

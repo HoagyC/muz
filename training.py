@@ -23,7 +23,7 @@ class GameRecord:
         self.search_stats.append([c.num_visits if c else 0 for c in root.children])
         self.values.append(root.average_val)
 
-    def make_target(self, ndx: int, reward_depth: int = 5, rollout_depth: int = 5):
+    def make_target(self, ndx: int, reward_depth: int = 5, rollout_depth: int = 3):
         # ndx is where in the record of the game we start
         # reward_depth is how far into the future we use the actual reward - beyond this we use predicted value
 
@@ -68,9 +68,9 @@ class GameRecord:
                     else:
                         break
 
-                if target_value > 1 / (1 - self.discount):
-                    print(target_value, self.values[bootstrap_index])
-                    target_value = 1 / (1 - self.discount)
+                # if target_value > 1 / (1 - self.discount):
+                #     print(target_value, self.values[bootstrap_index])
+                #     target_value = 1 / (1 - self.discount)
 
                 target_values.append(target_value)
 

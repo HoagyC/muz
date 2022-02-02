@@ -40,8 +40,8 @@ class CartDyna(nn.Module):
         out = torch.relu(out)
         out = self.fc2(out)
         new_latent = out[:, : self.latent_size]
-        reward = torch.softmax(out[:, self.latent_size :], 1)
-        return new_latent, reward
+        reward_logits = out[:, self.latent_size :]
+        return new_latent, reward_logits
 
 
 class CartPred(nn.Module):
@@ -59,9 +59,9 @@ class CartPred(nn.Module):
         out = self.fc1(latent)
         out = torch.relu(out)
         out = self.fc2(out)
-        policy = torch.softmax(out[:, : self.action_size], 1)
-        value = torch.softmax(out[:, self.action_size :], 1)
-        return policy, value
+        policy_logits = out[:, : self.action_size]
+        value_logits = out[:, self.action_size :]
+        return policy_logits, value_logits
 
 
 class MuZeroCartNet(nn.Module):
@@ -82,10 +82,12 @@ class MuZeroCartNet(nn.Module):
             + list(self.repr_net.parameters())
         )
         self.optimizer = torch.optim.SGD(
-            params, lr=config["learning_rate"], weight_decay=1e-4
+            params, lr=config["learning_rate"], weight_decay=1e-4, momentum=0.9
         )
 
         self.policy_loss = nn.CrossEntropyLoss()
+        self.reward_loss = nn.CrossEntropyLoss()
+        self.value_loss = nn.CrossEntropyLoss()
 
     def predict(self, latent):
         policy, value = self.pred_net(latent)
@@ -205,7 +207,7 @@ def support_to_scalar(support, epsilon=0.001):
     return output
 
 
-def scalar_to_support(scalar: torch.Tensor, epsilon=0.001, max_val: int = 40):
+def scalar_to_support(scalar: torch.Tensor, epsilon=0.001, max_val: int = 10):
     # Scaling the value function and converting to discrete support as found in
     # Appendix F if MuZero
 
@@ -214,10 +216,13 @@ def scalar_to_support(scalar: torch.Tensor, epsilon=0.001, max_val: int = 40):
         torch.sqrt(torch.abs(scalar) + 1) - 1 + epsilon * scalar
     )
 
+    h_x.clamp_(-max_val, max_val)
+
     upper_ndx = (torch.ceil(h_x) + max_val).to(dtype=torch.int64)
     lower_ndx = (torch.floor(h_x) + max_val).to(dtype=torch.int64)
     ratio = h_x % 1
     support = torch.zeros(2 * max_val + 1)
+
     if upper_ndx == lower_ndx:
         support[upper_ndx] = 1
     else:

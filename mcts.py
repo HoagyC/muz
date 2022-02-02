@@ -37,6 +37,7 @@ class MCTS:
         self.val_weight = config["val_weight"]
         self.discount = config["discount"]
         self.batch_size = config["batch_size"]
+        self.grad_clip = config["grad_clip"]
 
         self.minmax = MinMax()
 
@@ -50,7 +51,7 @@ class MCTS:
             x[0] for x in self.mu_net.predict(init_latent.unsqueeze(0))
         ]
 
-        init_val = support_to_scalar(init_val)
+        init_val = support_to_scalar(torch.softmax(init_val, 0))
         root_node = TreeNode(
             latent=init_latent,
             action_size=self.action_size,
@@ -81,12 +82,12 @@ class MCTS:
                             x[0]
                             for x in self.mu_net.dynamics(latent.unsqueeze(0), action_t)
                         ]
-                        reward = support_to_scalar(reward)
+                        reward = support_to_scalar(torch.softmax(reward, 0))
 
                         new_policy, new_val = [
                             x[0] for x in self.mu_net.predict(new_latent.unsqueeze(0))
                         ]
-                        new_val = support_to_scalar(new_val)
+                        new_val = support_to_scalar(torch.softmax(new_val, 0))
 
                         current_node.insert(
                             action_n=action,
@@ -160,15 +161,28 @@ class MCTS:
 
                     hidden_state.register_hook(lambda grad: grad * 0.5)
 
-                    pred_value = support_to_scalar(pred_value)
-                    pred_reward = support_to_scalar(pred_reward)
-
-                    value_loss = torch.abs(pred_value - target_value) ** 2
-                    reward_loss = torch.abs(pred_reward - target_reward) ** 2
-
-                    print(
-                        f"r p{pred_reward:6.2} t{target_reward:6.2}, v p{pred_value:6.3} t{target_value:6.3}"
+                    target_reward_s = scalar_to_support(target_reward)
+                    target_value_s = scalar_to_support(target_value)
+                    # print(
+                    #     "reward",
+                    #     target_reward,
+                    #     pred_reward,
+                    #     "value",
+                    #     target_value,
+                    #     pred_value,
+                    # )
+                    value_loss = self.mu_net.value_loss(
+                        pred_value.unsqueeze(0), target_value_s.unsqueeze(0)
                     )
+                    reward_loss = self.mu_net.reward_loss(
+                        pred_reward.unsqueeze(0), target_reward_s.unsqueeze(0)
+                    )
+                    # if i == 0:
+                    #     print(
+                    #         support_to_scalar(torch.softmax(pred_value, 0)),
+                    #         target_value,
+                    #         hidden_state,
+                    #     )
 
                     # print(f'r {pred_reward:3.3}, {target_reward:3.3}, v {pred_value:5.3}, {target_value:5.3}')
 
@@ -186,6 +200,11 @@ class MCTS:
             # total_loss = total_reward_loss
             self.mu_net.optimizer.zero_grad()
             batch_loss.backward()
+
+            # nn.utils.clip_grad_norm_(self.mu_net.pred_net.parameters(), self.grad_clip)
+            # nn.utils.clip_grad_norm_(self.mu_net.dyna_net.parameters(), self.grad_clip)
+            # nn.utils.clip_grad_norm_(self.mu_net.repr_net.parameters(), self.grad_clip)
+
             self.mu_net.optimizer.step()
             # score = self.minmax.normalize(q) + (p * vis_frac * balance_term)
 
@@ -307,13 +326,17 @@ class TreeNode:
         action = np.random.choice(
             [a for a in range(self.action_size) if scores[a] == maxscore]
         )
-        # print(action)
         return action
 
     def pick_game_action(self, temperature):
         visit_counts = [a.num_visits if a else 0 for a in self.children]
-
-        # print(visit_counts, self.val_pred, [c.val_pred if c else 0 for c in self.children])
+        val_preds = [c.val_pred if c else 0 for c in self.children]
+        print(
+            visit_counts,
+            self.val_pred,
+            val_preds,
+            "L" if val_preds[0] > val_preds[1] else "R",
+        )
 
         if temperature == 0:
             max_vis = max(visit_counts)
