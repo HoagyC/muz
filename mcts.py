@@ -331,12 +331,12 @@ class TreeNode:
     def pick_game_action(self, temperature):
         visit_counts = [a.num_visits if a else 0 for a in self.children]
         val_preds = [c.val_pred if c else 0 for c in self.children]
-        print(
-            visit_counts,
-            self.val_pred,
-            val_preds,
-            "L" if val_preds[0] > val_preds[1] else "R",
-        )
+        # print(
+        #     visit_counts,
+        #     self.val_pred,
+        #     val_preds,
+        #     "L" if val_preds[0] > val_preds[1] else "R",
+        # )
 
         if temperature == 0:
             max_vis = max(visit_counts)
