@@ -1,10 +1,10 @@
 env_name: CartPole-v0
-latent_size: 10
+latent_size: 3
 log_dir: runs
 val_weight: 0.01
 n_simulations: 100
 buffer_size: 100
-learning_rate: 0.001
-discount: 0.95
+learning_rate: 0.01
+discount: 0.9
 n_batches: 20
 batch_size: 10

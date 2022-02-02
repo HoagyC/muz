@@ -13,9 +13,9 @@ from training import ReplayBuffer
 
 class MinMax:
     def __init__(self):
-        self.max_reward = -float('inf')
-        self.min_reward = float('inf')
-    
+        self.max_reward = -float("inf")
+        self.min_reward = float("inf")
+
     def update(self, val):
         self.max_reward = max(val, self.max_reward)
         self.min_reward = min(val, self.min_reward)
@@ -26,18 +26,17 @@ class MinMax:
         else:
             return val
 
+
 class MCTS:
-    def __init__(
-        self, action_size, obs_size, mu_net, config
-    ):
+    def __init__(self, action_size, obs_size, mu_net, config):
         self.action_size = action_size
         self.obs_size = obs_size
         self.mu_net = mu_net
-        
-        self.val_weight = config['val_weight']
-        self.discount = config['discount']
-        self.batch_size = config['batch_size']
-        
+
+        self.val_weight = config["val_weight"]
+        self.discount = config["discount"]
+        self.batch_size = config["batch_size"]
+
         self.minmax = MinMax()
 
     def search(self, n_simulations, current_frame):
@@ -53,7 +52,7 @@ class MCTS:
             val_pred=init_val[0],
             pol_pred=init_policy[0],
             discount=self.discount,
-            minmax=self.minmax
+            minmax=self.minmax,
         )
 
         for i in range(n_simulations):
@@ -72,81 +71,107 @@ class MCTS:
                         action_t = nn.functional.one_hot(
                             torch.tensor([action]), num_classes=self.action_size
                         )
-                        
+
                         new_latent, reward = [
-                            x[0] for x in
-                            self.mu_net.dynamics(latent.unsqueeze(0), action_t)
+                            x[0]
+                            for x in self.mu_net.dynamics(latent.unsqueeze(0), action_t)
                         ]
-                        
-                        new_policy, new_val = self.mu_net.predict(new_latent.unsqueeze(0))
+
+                        new_policy, new_val = self.mu_net.predict(
+                            new_latent.unsqueeze(0)
+                        )
                         current_node.insert(
                             action_n=action,
                             latent=new_latent,
                             val_pred=new_val[0],
                             pol_pred=new_policy[0],
                             reward=reward,
-                            minmax=self.minmax
+                            minmax=self.minmax,
                         )
                         # print(action, reward)
                         new_node = True
                     else:
                         current_node = current_node.children[action]
-                    
+
                     search_list.append(current_node)
-                
+
                 self.backpropagate(search_list, new_val[0])
         return root_node
-    
+
     def train(self, buffer: ReplayBuffer, n_batches: int):
         total_loss, total_policy_loss, total_reward_loss, total_value_loss = 0, 0, 0, 0
-            
+
         for _ in range(n_batches):
             batch_policy_loss, batch_reward_loss, batch_value_loss = 0, 0, 0
-            
+
             batch = buffer.get_batch(batch_size=self.batch_size)
-            for init_image, actions, target_values, target_rewards, target_policies in batch:
-                assert len(actions) == len(target_policies) == len(target_rewards) == len(target_values)
+            for (
+                init_image,
+                actions,
+                target_values,
+                target_rewards,
+                target_policies,
+            ) in batch:
+                assert (
+                    len(actions)
+                    == len(target_policies)
+                    == len(target_rewards)
+                    == len(target_values)
+                )
                 rollout_depth = len(actions)
-                hidden_state = self.mu_net.represent(torch.tensor(init_image).unsqueeze(0))[0]
+                hidden_state = self.mu_net.represent(
+                    torch.tensor(init_image).unsqueeze(0)
+                )[0]
 
                 for i in range(rollout_depth):
                     target_value = torch.tensor(target_values[i], dtype=torch.float32)
                     target_reward = torch.tensor(target_rewards[i], dtype=torch.float32)
-                    target_policy = torch.tensor(target_policies[i], dtype=torch.float32)
-                    
-                    one_hot_action = nn.functional.one_hot(
-                        torch.tensor([actions[i]]).to(dtype=torch.int64), 
-                        num_classes=self.action_size
+                    target_policy = torch.tensor(
+                        target_policies[i], dtype=torch.float32
                     )
-                    
-                    pred_policy, pred_value = [x[0] for x in self.mu_net.predict(hidden_state.unsqueeze(0))]
-                    hidden_state, pred_reward = [x[0] for x in self.mu_net.dynamics(
-                        hidden_state.unsqueeze(0), one_hot_action)]
-                                        
+
+                    one_hot_action = nn.functional.one_hot(
+                        torch.tensor([actions[i]]).to(dtype=torch.int64),
+                        num_classes=self.action_size,
+                    )
+
+                    pred_policy, pred_value = [
+                        x[0] for x in self.mu_net.predict(hidden_state.unsqueeze(0))
+                    ]
+                    hidden_state, pred_reward = [
+                        x[0]
+                        for x in self.mu_net.dynamics(
+                            hidden_state.unsqueeze(0), one_hot_action
+                        )
+                    ]
+
                     policy_loss = self.mu_net.policy_loss(
-                        pred_policy.unsqueeze(0),
-                        target_policy.unsqueeze(0))
-                    
+                        pred_policy.unsqueeze(0), target_policy.unsqueeze(0)
+                    )
+
                     hidden_state.register_hook(lambda grad: grad * 0.5)
-                    
+
                     value_loss = torch.abs(pred_value - target_value) ** 2
                     reward_loss = torch.abs(pred_reward - target_reward) ** 2
-            
-                    # print('reward', action, pred_reward, target_reward)
-                    # print('value', action, pred_value, target_value)
-                    
+
+                    print(f'r {pred_reward:3.3}, {target_reward:3.3}, v {pred_value:5.3}, {target_value:5.3}')
+
                     batch_policy_loss += policy_loss
                     batch_value_loss += value_loss
                     batch_reward_loss += reward_loss
-                    
+
                     # print(f'p {policy_loss}, v {value_loss}, r {reward_loss}')
 
-            batch_loss = batch_policy_loss + batch_reward_loss + (batch_value_loss * self.val_weight)
+            batch_loss = (
+                batch_policy_loss
+                + batch_reward_loss
+                + (batch_value_loss * self.val_weight)
+            )
             # total_loss = total_reward_loss
             self.mu_net.optimizer.zero_grad()
             batch_loss.backward()
             self.mu_net.optimizer.step()
-                    # score = self.minmax.normalize(q) + (p * vis_frac * balance_term)
+            # score = self.minmax.normalize(q) + (p * vis_frac * balance_term)
 
             total_loss += batch_loss
             total_value_loss += batch_value_loss
@@ -157,12 +182,16 @@ class MCTS:
             "Loss/total": total_loss,
             "Loss/policy": total_policy_loss,
             "Loss/reward": total_reward_loss,
-            "Loss/value": (total_value_loss * self.val_weight)
+            "Loss/value": (total_value_loss * self.val_weight),
         }
-              
+
         return metrics_dict
 
-    def backpropagate(self, search_list, value, ):
+    def backpropagate(
+        self,
+        search_list,
+        value,
+    ):
         for node in search_list[::-1]:
             node.num_visits += 1
             node.update_val(value)
@@ -171,7 +200,17 @@ class MCTS:
 
 
 class TreeNode:
-    def __init__(self, latent, action_size, val_pred=None, pol_pred=None, parent=None, reward=0, discount=1, minmax=None):
+    def __init__(
+        self,
+        latent,
+        action_size,
+        val_pred=None,
+        pol_pred=None,
+        parent=None,
+        reward=0,
+        discount=1,
+        minmax=None,
+    ):
         self.action_size = action_size
         self.children = [None] * action_size
         self.latent = latent
@@ -181,7 +220,7 @@ class TreeNode:
         self.average_val = 0
         self.num_visits = 0
         self.reward = reward
-        
+
         self.discount = discount
         self.minmax = minmax
 
@@ -195,9 +234,9 @@ class TreeNode:
                 parent=self,
                 reward=reward,
                 discount=self.discount,
-                minmax=minmax
+                minmax=minmax,
             )
-            
+
             self.children[action_n] = new_child
 
         else:
@@ -227,14 +266,16 @@ class TreeNode:
         n = child.num_visits if child else 0
         q = child.average_val if child else 0
 
-        p = self.pol_pred[action_n]  # p here is the prior - the expectation of what the the policy will look like
+        p = self.pol_pred[
+            action_n
+        ]  # p here is the prior - the expectation of what the the policy will look like
         # p = 1 / self.action_size
 
         vis_frac = math.sqrt(total_visit_count) / (1 + n)
         balance_term = c1 + math.log((total_visit_count + c2 + 1) / c2)
 
         # score = self.minmax.normalize(q) + (p * vis_frac * balance_term)
-        
+
         score = self.minmax.normalize(q) + (vis_frac * balance_term)
 
         return score
@@ -247,20 +288,30 @@ class TreeNode:
         ]
         maxscore = max(scores)
 
-        action = np.random.choice([a for a in range(self.action_size) if scores[a] == maxscore])
+        action = np.random.choice(
+            [a for a in range(self.action_size) if scores[a] == maxscore]
+        )
         # print(action)
         return action
-    
+
     def pick_game_action(self, temperature):
         visit_counts = [a.num_visits if a else 0 for a in self.children]
+
         # print(visit_counts, self.val_pred, [c.val_pred if c else 0 for c in self.children])
-        
-        scores = [(vc + 1) ** (1 / temperature) for vc in visit_counts]
-        total_score = sum(scores)
-        adjusted_scores = [score / total_score for score in scores]
-        
-        action = np.random.choice(self.action_size, p=adjusted_scores)
-        
+
+        if temperature == 0:
+            max_vis = max(visit_counts)
+            action = np.random.choice(
+                [a for a in range(self.action_size) if visit_counts[a] == max_vis]
+            )
+
+        else:
+            scores = [(vc + 1) ** (1 / temperature) for vc in visit_counts]
+            total_score = sum(scores)
+            adjusted_scores = [score / total_score for score in scores]
+
+            action = np.random.choice(self.action_size, p=adjusted_scores)
+
         return action
 
 

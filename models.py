@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import random
 
+
 class CartRepr(nn.Module):
     def __init__(self, obs_size, latent_size):
         super().__init__()
@@ -10,8 +11,8 @@ class CartRepr(nn.Module):
         self.fc2 = nn.Linear(latent_size, latent_size)
 
     def forward(self, state):
-        assert(state.dim() == 2)
-        assert(state.shape[1] == self.obs_size)
+        assert state.dim() == 2
+        assert state.shape[1] == self.obs_size
         state = state.to(dtype=torch.float32)
         out = self.fc1(state)
         out = torch.relu(out)
@@ -28,8 +29,11 @@ class CartDyna(nn.Module):
         self.fc2 = nn.Linear(latent_size, latent_size + 1)
 
     def forward(self, latent, action):
-        assert(latent.dim() == 2 and action.dim() == 2)
-        assert(latent.shape[1] == self.latent_size and action.shape[1] == self.action_size)
+        assert latent.dim() == 2 and action.dim() == 2
+        assert (
+            latent.shape[1] == self.latent_size and action.shape[1] == self.action_size
+        )
+
         out = torch.cat([action, latent], dim=1)
         out = self.fc1(out)
         out = torch.relu(out)
@@ -48,12 +52,12 @@ class CartPred(nn.Module):
         self.fc2 = nn.Linear(latent_size, action_size + 1)
 
     def forward(self, latent):
-        assert(latent.dim() == 2)
-        assert(latent.shape[1] == self.latent_size)
+        assert latent.dim() == 2
+        assert latent.shape[1] == self.latent_size
         out = self.fc1(latent)
         out = torch.relu(out)
         out = self.fc2(out)
-        policy = torch.softmax(out[:, :self.action_size], 1)
+        policy = torch.softmax(out[:, : self.action_size], 1)
         value = out[:, self.action_size]
         return policy, value
 
@@ -63,15 +67,19 @@ class MuZeroCartNet(nn.Module):
         super().__init__()
         self.action_size = action_size
         self.obs_size = obs_size
-        self.latent_size = config['latent_size']
+        self.latent_size = config["latent_size"]
 
         self.pred_net = CartPred(self.action_size, self.latent_size)
         self.dyna_net = CartDyna(self.action_size, self.latent_size)
         self.repr_net = CartRepr(self.obs_size, self.latent_size)
 
-        params = list(self.pred_net.parameters()) + list(self.dyna_net.parameters()) + list(self.repr_net.parameters())
-        self.optimizer = torch.optim.SGD(params, lr=config['learning_rate'])
-        
+        params = (
+            list(self.pred_net.parameters())
+            + list(self.dyna_net.parameters())
+            + list(self.repr_net.parameters())
+        )
+        self.optimizer = torch.optim.SGD(params, lr=config["learning_rate"])
+
         self.policy_loss = nn.CrossEntropyLoss()
 
     def predict(self, latent):
