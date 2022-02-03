@@ -31,7 +31,7 @@ log_name = os.path.join(
 )
 tb_writer = SummaryWriter(log_dir=log_name)
 
-memory = ReplayBuffer(size=config["buffer_size"])
+memory = ReplayBuffer(config)
 # open muz implementation uses a GameHistory class
 # with observation_history, action_history, reward_history
 # to_play which is who is to play in case it's a multiplayer, turn-based game

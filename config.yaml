@@ -10,3 +10,6 @@ discount: 0.997
 n_batches: 100
 batch_size: 10
 support_width: 10
+rollout_depth: 5
+reward_depth: 5
+debug: False

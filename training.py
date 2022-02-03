@@ -95,13 +95,16 @@ class GameRecord:
 
 
 class ReplayBuffer:
-    def __init__(self, size: int):
-        self.size = size  # How many game records to store
+    def __init__(self, config):
+        self.size = config["buffer_size"]  # How many game records to store
         self.buffer = []  # List of stored game records
         self.total_vals = 0  # How many total steps are stored
 
         # List of start points of each game if the whole buffer were concatenated
         self.game_starts_list = []
+
+        self.reward_depth = config["reward_depth"]
+        self.rollout_depth = config["rollout_depth"]
 
     def update_stats(self):
         # Maintain stats for the total length of all games in the buffer
@@ -109,7 +112,7 @@ class ReplayBuffer:
         # so that each step of each game can be uniquely indexed
 
         lengths = [len(x.values) for x in self.buffer]
-        self.game_starts_list = [sum(lengths[0:i]) for i in range(len(self.len_list))]
+        self.game_starts_list = [sum(lengths[0:i]) for i in range(len(self.buffer))]
         self.total_vals = sum(lengths)
 
     def save_game(self, game):
@@ -138,7 +141,11 @@ class ReplayBuffer:
                 target_values,
                 target_rewards,
                 target_policies,
-            ) = game.make_target(game_ndx)
+            ) = game.make_target(
+                game_ndx,
+                reward_depth=self.reward_depth,
+                rollout_depth=self.rollout_depth,
+            )
 
             # Add tuple to batch
             batch.append(

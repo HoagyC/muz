@@ -12,55 +12,58 @@ from training import ReplayBuffer
 from models import scalar_to_support, support_to_scalar
 
 
-class MinMax:
-    # This class tracks the smallest and largest values that have been seen
-    # so that it can normalize the values
-    # this is for when deciding which branch of the tree to explore
-    # by putting the values on a 0-1 scale, they become comparable with the probabilities
-    # given by the prior
-
-    # comes pretty much straight from the MuZero pseudocode
-    def __init__(self):
-        # initialize at +-inf so that any value will supercede the max/min
-        self.max_value = -float("inf")
-        self.min_value = float("inf")
-
-    def update(self, val):
-        self.max_value = max(val, self.max_value)
-        self.min_value = min(val, self.min_value)
-
-    def normalize(self, val):
-        # places val between 0 - 1 linearly depending on where it sits between min_value and max_value
-        if self.max_value > self.min_value:
-            return (val - self.min_value) / (self.max_value - self.min_value)
-        else:
-            return val
-
-
 class MCTS:
+    """
+    MCTS is the class where contains the main algorithm - it contains within it the
+    models used to search, and to
+
+    """
+
     def __init__(self, action_size, obs_size, mu_net, config):
         self.action_size = action_size
         self.obs_size = obs_size
-        self.mu_net = mu_net  # a class which holds the three functions as set out in
 
+        # a class which holds the three functions as set out in MuZero paper: representation, prediction, dynamics
+        # and has an optimizer which updates the parameters for all three simultaneously
+        self.mu_net = mu_net
+
+        # weighting of the value loss relative to policy and reward - paper recommends 0.25
         self.val_weight = config["val_weight"]
         self.discount = config["discount"]
         self.batch_size = config["batch_size"]
+        self.debug = config["debug"]
 
+        # keeps track of the highest and lowest values found
         self.minmax = MinMax()
 
     def search(self, n_simulations, current_frame):
-        # with torch.no_grad():
-        #     model.eval()
+        """
+        This function takes a frame and creates a tree of possible actions that could
+        be taken from the frame, assessing the expected value at each location
+        and returning this tree which contains the data needed to choose an action
 
-        frame_t = torch.tensor(current_frame).unsqueeze(0)
-        init_latent = self.mu_net.represent(frame_t)[0]
+        The models expect inputs where the first dimension is a batch dimension,
+        but the way in which we traverse the tree means we only pass a single
+        input at a time. There is therefore the need to consistently squeeze and unsqueeze
+        (ie add and remove the first dimension) so as not to confuse things by carrying around
+        extraneous dimensions
+
+        Note that mu_net returns logits for the policy, value and reward
+        and that the value and reward are represented categorically rather than
+        as a scalar
+        """
+
+        frame_t = torch.tensor(current_frame)
+        init_latent = self.mu_net.represent(frame_t.unsqueeze(0))[0]
         init_policy, init_val = [
             x[0] for x in self.mu_net.predict(init_latent.unsqueeze(0))
         ]
-        init_policy_probs = torch.softmax(init_policy, 0)
 
+        # Getting probabilities from logits and a scalar value from the categorical support
+        init_policy_probs = torch.softmax(init_policy, 0)
         init_val = support_to_scalar(torch.softmax(init_val, 0))
+
+        # initialize the search tree with a root node
         root_node = TreeNode(
             latent=init_latent,
             action_size=self.action_size,
@@ -68,57 +71,80 @@ class MCTS:
             pol_pred=init_policy_probs,
             discount=self.discount,
             minmax=self.minmax,
+            debug=self.debug,
         )
 
         for i in range(n_simulations):
+            # vital to have to grad or the size of the computation graph quickly becomes gigantic
             with torch.no_grad():
                 current_node = root_node
                 new_node = False
+
+                # search list tracks the route of the simulation through the tree
                 search_list = [current_node]
                 while not new_node:
-                    value_pred, policy_pred, latent = (
-                        current_node.val_pred,
-                        current_node.pol_pred,
-                        current_node.latent,
-                    )
+                    value_pred = current_node.val_pred
+                    policy_pred = current_node.pol_pred
+                    latent = current_node.latent
+
                     action = current_node.pick_action()
+
+                    # if we pick an action that's been picked before we don't need to run the model to explore it
                     if current_node.children[action] is None:
+                        # Convert to a 2D tensor one-hot encoding the action
                         action_t = nn.functional.one_hot(
                             torch.tensor([action]), num_classes=self.action_size
                         )
 
-                        new_latent, reward = [
+                        # apply the dynamics function to get a representation of the state after the action, and the reward gained
+                        # then estimate the policy and value at this new state
+
+                        latent, reward = [
                             x[0]
                             for x in self.mu_net.dynamics(latent.unsqueeze(0), action_t)
                         ]
-                        reward = support_to_scalar(torch.softmax(reward, 0))
-
                         new_policy, new_val = [
-                            x[0] for x in self.mu_net.predict(new_latent.unsqueeze(0))
+                            x[0] for x in self.mu_net.predict(latent.unsqueeze(0))
                         ]
-                        new_val = support_to_scalar(torch.softmax(new_val, 0))
 
+                        # convert logits to scalars and probaility distributions
+                        reward = support_to_scalar(torch.softmax(reward, 0))
+                        new_val = support_to_scalar(torch.softmax(new_val, 0))
                         policy_probs = torch.softmax(new_policy, 0)
 
                         current_node.insert(
                             action_n=action,
-                            latent=new_latent,
+                            latent=latent,
                             val_pred=new_val,
                             pol_pred=policy_probs,
                             reward=reward,
                             minmax=self.minmax,
+                            debug=self.debug,
                         )
-                        # print(action, reward)
+
+                        # We have reached a new node and therefore this is the end of the simulation
                         new_node = True
                     else:
+                        # If we have already explored this node then we take the child as our new current node
                         current_node = current_node.children[action]
 
                     search_list.append(current_node)
 
+                # Updates the visit counts and average values of the nodes that have been traversed
                 self.backpropagate(search_list, new_val)
         return root_node
 
     def train(self, buffer: ReplayBuffer, n_batches: int):
+        """
+        The train function simultaneously trains the prediction, dynamics and representation functions
+        each batch has a series of values, rewards and policies, that must be predicted only
+        from the initial_image, and the actions.
+
+        This unrolled training is how the dynamics function
+        is trained - is it akin to training through a recurrent neural network with the prediction function
+        as a head
+        """
+
         total_loss, total_policy_loss, total_reward_loss, total_value_loss = 0, 0, 0, 0
 
         for _ in range(n_batches):
@@ -138,12 +164,16 @@ class MCTS:
                     == len(target_rewards)
                     == len(target_values)
                 )
+
+                # This is how far we will deny the use of the representation function,
+                # requiring the dynamics function to learn to represent the s, a -> s function
                 rollout_depth = len(actions)
-                hidden_state = self.mu_net.represent(
-                    torch.tensor(init_image).unsqueeze(0)
-                )[0]
+                latent = self.mu_net.represent(torch.tensor(init_image).unsqueeze(0))[0]
 
                 for i in range(rollout_depth):
+                    # We must do tthis sequentially, as the input to the dynamics function requires the output
+                    # from the previous dynamics function
+
                     target_value = torch.tensor(target_values[i], dtype=torch.float32)
                     target_reward = torch.tensor(target_rewards[i], dtype=torch.float32)
                     target_policy = torch.tensor(
@@ -156,13 +186,13 @@ class MCTS:
                     )
 
                     pred_policy, pred_value = [
-                        x[0] for x in self.mu_net.predict(hidden_state.unsqueeze(0))
+                        x[0] for x in self.mu_net.predict(latent.unsqueeze(0))
                     ]
 
-                    hidden_state, pred_reward = [
+                    latent, pred_reward = [
                         x[0]
                         for x in self.mu_net.dynamics(
-                            hidden_state.unsqueeze(0), one_hot_action
+                            latent.unsqueeze(0), one_hot_action
                         )
                     ]
 
@@ -170,45 +200,34 @@ class MCTS:
                         pred_policy.unsqueeze(0), target_policy.unsqueeze(0)
                     )
 
-                    hidden_state.register_hook(lambda grad: grad * 0.5)
+                    # We scale down the gradient, I believe so that the gradient at the base of the unrolled
+                    # network converges to a maximum rather than increasing linearly with depth
+                    latent.register_hook(lambda grad: grad * 0.5)
 
                     target_reward_s = scalar_to_support(target_reward)
                     target_value_s = scalar_to_support(target_value)
-                    # print(
-                    #     "reward",
-                    #     target_reward,
-                    #     pred_reward,
-                    #     "value",
-                    #     target_value,
-                    #     pred_value,
-                    # )
+
+                    # The muzero paper calculates the loss as the squared difference between scalars
+                    # but CrossEntropyLoss is used here for a more stable value loss when large values are encountered
                     value_loss = self.mu_net.value_loss(
                         pred_value.unsqueeze(0), target_value_s.unsqueeze(0)
                     )
                     reward_loss = self.mu_net.reward_loss(
                         pred_reward.unsqueeze(0), target_reward_s.unsqueeze(0)
                     )
-                    # if i == 0:
-                    #     print(
-                    #         support_to_scalar(torch.softmax(pred_value, 0)),
-                    #         target_value,
-                    #         hidden_state,
-                    #     )
-
-                    # print(f'r {pred_reward:3.3}, {target_reward:3.3}, v {pred_value:5.3}, {target_value:5.3}')
 
                     batch_policy_loss += policy_loss
                     batch_value_loss += value_loss
                     batch_reward_loss += reward_loss
 
-                    # print(f'p {policy_loss}, v {value_loss}, r {reward_loss}')
-
+            # Aggregate the losses to a single measure
             batch_loss = (
                 batch_policy_loss
                 + batch_reward_loss
                 + (batch_value_loss * self.val_weight)
             )
-            # total_loss = total_reward_loss
+
+            # Zero the gradients in the computation graph and then propagate the loss back through it
             self.mu_net.optimizer.zero_grad()
             batch_loss.backward()
 
@@ -233,7 +252,11 @@ class MCTS:
         search_list,
         value,
     ):
+        """Going backward through the visited nodes, we increase the visit count of each by one
+        and set the value, discounting the value at the node ahead, but then adding the reward"""
+
         for node in search_list[::-1]:
+
             node.num_visits += 1
             node.update_val(value)
             value = node.reward + (value * self.discount)
@@ -241,6 +264,12 @@ class MCTS:
 
 
 class TreeNode:
+    """
+    TreeNode is an individual node of a search tree.
+    It has one potential child for each potential action which, if it exists, is another TreeNode
+    Its function is to hold the relevant statistics for deciding which action to take.
+    """
+
     def __init__(
         self,
         latent,
@@ -251,7 +280,9 @@ class TreeNode:
         reward=0,
         discount=1,
         minmax=None,
+        debug=False,
     ):
+
         self.action_size = action_size
         self.children = [None] * action_size
         self.latent = latent
@@ -265,7 +296,11 @@ class TreeNode:
         self.discount = discount
         self.minmax = minmax
 
-    def insert(self, action_n, latent, val_pred, pol_pred, reward, minmax):
+        self.debug = debug
+
+    def insert(self, action_n, latent, val_pred, pol_pred, reward, minmax, debug):
+        # The implementation here differs from the open MuZero (werner duvaud)
+        # by only initializing tree nodes when they are chosen, rather than when their parent is chosen
         if self.children[action_n] is None:
             new_child = TreeNode(
                 latent=latent,
@@ -276,6 +311,7 @@ class TreeNode:
                 reward=reward,
                 discount=self.discount,
                 minmax=minmax,
+                debug=debug,
             )
 
             self.children[action_n] = new_child
@@ -283,22 +319,18 @@ class TreeNode:
         else:
             raise ValueError("This node has already been traversed")
 
-    def increment(self):
-        self.num_visits += 1
-        if self.parent:
-            self.parent.increment()
-
     def update_val(self, curr_val):
+        """Updates the average value of a node when a new value is receivied
+        copies the formula of the muzero paper rather than the neater form of just tracking the sum and dividng as needed
+        """
         nmtr = self.average_val * self.num_visits + (curr_val + self.val_pred)
         dnmtr = self.num_visits + 1
         self.average_val = nmtr / dnmtr
 
-        if self.parent is not None:
-            self.parent.update_val(
-                curr_val * self.discount
-            )  # send this down to the parent so that it also updates
-
     def action_score(self, action_n, total_visit_count):
+        """
+        Scoring function for the different potential actions, following the formula in Appendix B of muzero
+        """
         c1 = 1.25
         c2 = 19652
 
@@ -307,19 +339,24 @@ class TreeNode:
         n = child.num_visits if child else 0
         q = child.average_val if child else 0
 
-        p = self.pol_pred[
-            action_n
-        ]  # p here is the prior - the expectation of what the the policy will look like
-        # p = 1 / self.action_size
+        # p here is the prior - the expectation of what the the policy will look like
+        prior = self.pol_pred[action_n]
 
-        vis_frac = math.sqrt(total_visit_count) / (1 + n)
+        # This term increases the prior on those actions which have been taken only a small fraction
+        # of the current number of visits to this node
+        explore_term = math.sqrt(total_visit_count) / (1 + n)
+
+        # This is intended to more heavily weight the prior as we take more and more actions.
+        # Its utility is questionable, because with on the order of 100 simulations, this term will always be
+        # close to 1.
         balance_term = c1 + math.log((total_visit_count + c2 + 1) / c2)
 
-        score = self.minmax.normalize(q) + (p * vis_frac * balance_term)
+        score = self.minmax.normalize(q) + (prior * explore_term * balance_term)
 
         return score
 
     def pick_action(self):
+        """Gets the score each of the potential actions and picks the one with the highest"""
         total_visit_count = sum([a.num_visits if a else 0 for a in self.children])
 
         scores = [
@@ -327,21 +364,31 @@ class TreeNode:
         ]
         maxscore = max(scores)
 
+        # Need to be careful not to always pick the first action is it common that two are scored identically
         action = np.random.choice(
             [a for a in range(self.action_size) if scores[a] == maxscore]
         )
         return action
 
     def pick_game_action(self, temperature):
-        visit_counts = [a.num_visits if a else 0 for a in self.children]
-        val_preds = [c.val_pred if c else 0 for c in self.children]
+        """
+        Picks the action to actually be taken in game,
+        taken by the root node after the full tree has been generated.
+        Note that it only uses the visit counts, rather than the score or prior,
+        these impact the decision only through their impact on where to visit
+        """
 
+        visit_counts = [a.num_visits if a else 0 for a in self.children]
+
+        # zero temperature means always picking the highest visit count
         if temperature == 0:
             max_vis = max(visit_counts)
             action = np.random.choice(
                 [a for a in range(self.action_size) if visit_counts[a] == max_vis]
             )
 
+        # If temperature is non-zero, raise (visit_count + 1) to power (1 / T)
+        # scale these to a probability distribution and use to select action
         else:
             scores = [(vc + 1) ** (1 / temperature) for vc in visit_counts]
             total_score = sum(scores)
@@ -349,6 +396,9 @@ class TreeNode:
 
             action = np.random.choice(self.action_size, p=adjusted_scores)
 
+        # Prints a lot of useful information for how the algorithm is making decisions
+        if self.debug:
+            val_preds = [c.val_pred if c else 0 for c in self.children]
             print(
                 visit_counts,
                 self.val_pred,
@@ -364,6 +414,34 @@ class TreeNode:
             )
 
         return action
+
+
+class MinMax:
+    """
+    This class tracks the smallest and largest values that have been seen
+    so that it can normalize the values
+    this is for when deciding which branch of the tree to explore
+    by putting the values on a 0-1 scale, they become comparable with the probabilities
+    given by the prior
+
+    It comes pretty much straight from the MuZero pseudocode
+    """
+
+    def __init__(self):
+        # initialize at +-inf so that any value will supercede the max/min
+        self.max_value = -float("inf")
+        self.min_value = float("inf")
+
+    def update(self, val):
+        self.max_value = max(val, self.max_value)
+        self.min_value = min(val, self.min_value)
+
+    def normalize(self, val):
+        # places val between 0 - 1 linearly depending on where it sits between min_value and max_value
+        if self.max_value > self.min_value:
+            return (val - self.min_value) / (self.max_value - self.min_value)
+        else:
+            return val
 
 
 if __name__ == "__main__":
