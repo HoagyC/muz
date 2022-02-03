@@ -76,18 +76,17 @@ class MuZeroCartNet(nn.Module):
         self.dyna_net = CartDyna(self.action_size, self.latent_size, self.support_width)
         self.repr_net = CartRepr(self.obs_size, self.latent_size)
 
+        self.policy_loss = nn.CrossEntropyLoss()
+        self.reward_loss = nn.CrossEntropyLoss()
+        self.value_loss = nn.CrossEntropyLoss()
+
+    def init_optim(self, lr):
         params = (
             list(self.pred_net.parameters())
             + list(self.dyna_net.parameters())
             + list(self.repr_net.parameters())
         )
-        self.optimizer = torch.optim.SGD(
-            params, lr=config["learning_rate"], weight_decay=1e-4, momentum=0.9
-        )
-
-        self.policy_loss = nn.CrossEntropyLoss()
-        self.reward_loss = nn.CrossEntropyLoss()
-        self.value_loss = nn.CrossEntropyLoss()
+        self.optimizer = torch.optim.SGD(params, lr=lr, weight_decay=1e-4, momentum=0.9)
 
     def predict(self, latent):
         policy, value = self.pred_net(latent)

@@ -19,6 +19,8 @@ action_size = env.action_space.n
 obs_size = env.observation_space.shape[0]
 
 muzero_network = MuZeroCartNet(action_size, obs_size, config)
+learning_rate = config["learning_rate"]
+muzero_network.init_optim(learning_rate)
 
 mcts = MCTS(
     action_size=action_size, obs_size=obs_size, mu_net=muzero_network, config=config
@@ -43,12 +45,17 @@ total_games = 0
 while True:
     frames = 0
     over = False
-    game_record = GameRecord(action_size, discount=config["discount"])
-
     frame = env.reset()
-    game_record.observations.append(frame)
 
-    temperature = 20 / (total_games + 20)
+    game_record = GameRecord(
+        action_size=action_size, init_frame=frame, discount=config["discount"]
+    )
+
+    temperature = 10 / (total_games + 10)
+
+    if total_games % 10 == 0:
+        learning_rate = learning_rate * config["learning_rate_decay"]
+        mcts.mu_net.init_optim(learning_rate)
 
     while not over:
         tree = mcts.search(config["n_simulations"], frame)
