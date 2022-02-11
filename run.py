@@ -1,5 +1,6 @@
 import datetime
 import os
+import sys
 import time
 import yaml
 
@@ -66,7 +67,9 @@ while True:
         tree = mcts.search(config["n_simulations"], frame)
         action = tree.pick_game_action(temperature=temperature)
 
-        env.render("human")
+        if config["render"]:
+            env.render("human")
+
         frame, reward, over, _ = env.step(action)
 
         game_record.add_step(frame, action, reward, tree)

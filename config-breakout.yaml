@@ -12,6 +12,7 @@ batch_size: 10
 support_width: 10
 rollout_depth: 5
 reward_depth: 5
-debug: True
+debug: False
 root_dirichlet_alpha: 0.25
 explore_frac: 0.25
+render: False

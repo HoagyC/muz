@@ -21,6 +21,7 @@ class MCTS:
 
     def __init__(self, action_size, mu_net, config):
         self.action_size = action_size
+        self.config = config
 
         # a class which holds the three functions as set out in MuZero paper: representation, prediction, dynamics
         # and has an optimizer which updates the parameters for all three simultaneously
@@ -234,7 +235,8 @@ class MCTS:
                 + (batch_value_loss * self.val_weight)
             )
 
-            print(f"v {value_loss}, r {reward_loss}, p {policy_loss}")
+            if self.config["debug"]:
+                print(f"v {value_loss}, r {reward_loss}, p {policy_loss}")
 
             # Zero the gradients in the computation graph and then propagate the loss back through it
             self.mu_net.optimizer.zero_grad()

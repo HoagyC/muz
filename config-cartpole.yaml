@@ -15,3 +15,4 @@ reward_depth: 5
 debug: False
 root_dirichlet_alpha: 0.25
 explore_frac: 0.25
+render: False
