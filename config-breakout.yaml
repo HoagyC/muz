@@ -1,0 +1,17 @@
+env_name: Breakout-v0
+latent_size: 20
+log_dir: runs
+val_weight: 0.25
+n_simulations: 10
+buffer_size: 100
+learning_rate: 0.0003
+learning_rate_decay: 0.9
+discount: 0.997
+n_batches: 100
+batch_size: 10
+support_width: 10
+rollout_depth: 5
+reward_depth: 5
+debug: True
+root_dirichlet_alpha: 0.25
+explore_frac: 0.25

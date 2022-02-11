@@ -4,7 +4,7 @@ class Node:
         self.right = None
 
         # Assume data has two classes, data.idx and data.val
-        # But could also just have the class which is data and
+        # But could also just have the class which is data and some comparison function on this data
         self.ndx = ndx
         self.val = val
 

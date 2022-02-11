@@ -1,5 +1,8 @@
+import math
+
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import random
 
 
@@ -101,11 +104,72 @@ class MuZeroCartNet(nn.Module):
         return latent
 
 
+class MuZeroAtariNet(nn.Module):
+    def __init__(self, action_size, obs_size, config):
+        super().__init__()
+
+        self.x_pad, self.y_pad = 0, 0
+        assert len(obs_size) == 3
+
+        self.y_size, self.x_size, self.n_channels = obs_size
+
+        if self.x_size % 16 != 0:
+            self.x_pad = 16 - (obs_size[1] % 16)
+
+        if self.y_size % 16 != 0:
+            self.y_pad = 16 - (obs_size[0] % 16)
+
+        self.x_size_final = math.ceil(obs_size[1] / 16)
+        self.y_size_final = math.ceil(obs_size[0] / 16)
+
+        self.action_size = action_size
+        self.obs_size = obs_size
+        self.latent_depth = config["latent_size"]
+        self.support_width = config["support_width"]
+        self.latent_area = self.x_size_final * self.y_size_final
+
+        self.dyna_net = AtariDynamicsNet(
+            self.latent_depth, self.support_width, self.latent_area, self.action_size
+        )
+        self.pred_net = AtariPredictionNet(
+            self.latent_depth, self.support_width, self.latent_area, self.action_size
+        )
+        self.repr_net = AtariRepresentationNet(
+            self.x_pad, self.y_pad, self.latent_depth
+        )
+
+        self.policy_loss = nn.CrossEntropyLoss()
+        self.reward_loss = nn.CrossEntropyLoss()
+        self.value_loss = nn.CrossEntropyLoss()
+
+    def init_optim(self, lr):
+        params = (
+            list(self.pred_net.parameters())
+            + list(self.dyna_net.parameters())
+            + list(self.repr_net.parameters())
+        )
+        self.optimizer = torch.optim.SGD(params, lr=lr, weight_decay=1e-4, momentum=0.9)
+
+    def predict(self, latent):
+        policy, value = self.pred_net(latent)
+        return policy, value
+
+    def dynamics(self, latent, action):
+        latent, reward = self.dyna_net(latent, action)
+        return latent, reward
+
+    def represent(self, observation):
+        latent = self.repr_net(observation)
+        return latent
+
+
 class ResBlock(nn.Module):
     def __init__(
-        self, in_channels, out_channels, downsample=None, momentum=0.1, stride=1
+        self, in_channels, out_channels=None, downsample=None, momentum=0.1, stride=1
     ):
         super().__init__()
+        if not out_channels:
+            out_channels = in_channels
 
         self.conv1 = nn.Conv2d(
             in_channels, out_channels, stride=stride, padding=1, kernel_size=3
@@ -124,24 +188,25 @@ class ResBlock(nn.Module):
         out = self.batch_norm2(self.conv2(out))
 
         if self.downsample is not None:
-            identity = self.downsample(x)
+            identity = self.downsample(iout)
 
         out = out + identity
         out = torch.relu(out)
         return out
 
 
-class RepresentationNet(nn.Module):
-    def __init__(self):
+class AtariRepresentationNet(nn.Module):
+    def __init__(self, x_pad, y_pad, latent_depth):
         super().__init__()
+
+        self.pad = (0, x_pad, 0, y_pad)
 
         self.conv1 = nn.Conv2d(3, 32, stride=2, kernel_size=3, padding=1)
         self.batch_norm1 = nn.BatchNorm2d(num_features=32, momentum=0.1)
 
         self.res1 = ResBlock(32)
 
-        self.conv2 = nn.Conv2d(64, 64, stride=2, kernel_size=3, padding=1)
-        self.res_down = ResBlock(32, 64, downsample=self.conv2)
+        self.conv2 = nn.Conv2d(32, 64, stride=2, kernel_size=3, padding=1)
 
         self.res2 = ResBlock(64)
         self.av_pool1 = nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
@@ -149,51 +214,106 @@ class RepresentationNet(nn.Module):
         self.av_pool2 = nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
         self.res4 = ResBlock(64)
 
+        self.conv3 = nn.Conv2d(64, latent_depth, stride=1, kernel_size=3, padding=1)
+
     def forward(self, x):  # inputs are 96x96??
-        out = torch.relu(self.batch_norm1(self.conv1(x)))  # outputs 48x48
+        x = x.to(dtype=torch.float32)
+        out = F.pad(x, self.pad, "constant", 0)
+        out = torch.relu(self.batch_norm1(self.conv1(out)))  # outputs 48x48
 
         out = self.res1(out)
 
-        out = self.res_down(out)  # outputs 24x24
+        out = self.conv2(out)  # outputs 24x24
 
         out = self.res2(out)
         out = self.av_pool1(out)  # outputs 12x12
         out = self.res3(out)
         out = self.av_pool2(out)  # outputs 6x6
         out = self.res4(out)
-
-
-# this needs to take a a block representing the current or future state
-# which in this model is a 6x6x64 tensor
-# and return a policy and a value
-# value is intended to predict the n-step reward
-# policy predicts the policy that will actually be undertaken at that future time
-# so that we know where to go in the future
-class PredictionNetwork(nn.Module):
-    def __init__(self, action_size):
-        pass
-
-
-# this takes a block representing a game state, and an action
-# and returns a block of the same shape
-class DynamicsNetwork(nn.Module):
-    def __init__(self, action_size):
-        block_size = 6 * 6 * 64
-        self.fc1 = nn.Linear(block_size + action_size, block_size)
-        self.fc2 = nn.Linear(block_size, block_size)
-
-    def forward(self, block, action):
-        flat_block = block.flatten()
-        out = torch.cat(flat_block, action)
-        out = torch.relu(self.fc1(out))
-        out = self.fc2(out)
-        out = out.view(6, 6, 64)
+        out = self.conv3(out)
         return out
+
+
+class AtariDynamicsNet(nn.Module):
+    def __init__(
+        self,
+        latent_depth,
+        support_width,
+        latent_area,
+        action_space_size,
+        reward_head_width=50,
+    ):
+        super().__init__()
+        self.latent_depth = latent_depth
+        self.full_support_width = (support_width * 2) + 1
+        self.latent_area = latent_area
+
+        self.conv1 = nn.Conv2d(
+            latent_depth + action_space_size, latent_depth, kernel_size=3, padding=1
+        )
+        self.res1 = ResBlock(latent_depth)
+        self.res2 = ResBlock(latent_depth)
+        self.res3 = ResBlock(latent_depth)
+
+        self.fc1 = nn.Linear(latent_area * latent_depth, reward_head_width)
+        self.fc2 = nn.Linear(reward_head_width, self.full_support_width)
+
+    def forward(self, latent, actions_one_hot):
+        # Receives 2D actions of batch_size x action_space_size
+        action_images = torch.ones(latent.shape[0], latent.shape[2], latent.shape[3])
+
+        action_images_spread = torch.einsum(
+            "bhw,ba->bahw", action_images, actions_one_hot
+        )  # Spread the one-hot action over the first dim to make a channel for each possible action
+
+        res_input = torch.cat((latent, action_images_spread), dim=1)
+
+        batch_size = latent.shape[0]
+        out = self.conv1(res_input)
+        out = self.res1(out)
+        out = self.res2(out)
+        new_latent = self.res3(out)
+
+        out = new_latent.view(batch_size, -1)
+        reward_logits = self.fc2(torch.relu(self.fc1(out)))
+
+        return new_latent, reward_logits
+
+
+class AtariPredictionNet(nn.Module):
+    def __init__(
+        self,
+        latent_depth,
+        support_width,
+        latent_area,
+        action_size,
+        prediction_head_width=50,
+    ):
+        super().__init__()
+
+        self.latent_depth = latent_depth
+        self.full_support_width = (support_width * 2) + 1
+        self.latent_area = latent_area
+
+        self.fc1 = nn.Linear(latent_area * latent_depth, prediction_head_width)
+        self.fc_policy = nn.Linear(prediction_head_width, action_size)
+        self.fc_value = nn.Linear(prediction_head_width, self.full_support_width)
+
+    def forward(self, x):
+        batch_size = x.shape[0]
+        out = x.view(batch_size, -1)
+
+        out = torch.relu(self.fc1(out))
+        policy_logits = self.fc_policy(out)
+        value_logits = self.fc_value(out)
+        return policy_logits, value_logits
 
 
 def support_to_scalar(support, epsilon=0.001):
     half_width = int((len(support) - 1) / 2)
     vals = torch.Tensor(range(-half_width, half_width + 1))
+
+    # Dot product of the two
     out_val = torch.einsum("i,i -> ", vals, support)
 
     sign_out = 1 if out_val >= 0 else -1

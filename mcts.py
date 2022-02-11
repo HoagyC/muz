@@ -15,13 +15,12 @@ from models import scalar_to_support, support_to_scalar
 class MCTS:
     """
     MCTS is the class where contains the main algorithm - it contains within it the
-    models used to search, and to
-
+    models used to estimate the quantities of interest, as well as the functions to
+    create the tree of potential actions, and to train the relevant models
     """
 
-    def __init__(self, action_size, obs_size, mu_net, config):
+    def __init__(self, action_size, mu_net, config):
         self.action_size = action_size
-        self.obs_size = obs_size
 
         # a class which holds the three functions as set out in MuZero paper: representation, prediction, dynamics
         # and has an optimizer which updates the parameters for all three simultaneously
@@ -32,6 +31,9 @@ class MCTS:
         self.discount = config["discount"]
         self.batch_size = config["batch_size"]
         self.debug = config["debug"]
+
+        self.root_dirichlet_alpha = config["root_dirichlet_alpha"]
+        self.explore_frac = config["explore_frac"]
 
         # keeps track of the highest and lowest values found
         self.minmax = MinMax()
@@ -53,30 +55,34 @@ class MCTS:
         as a scalar
         """
 
-        frame_t = torch.tensor(current_frame)
-        init_latent = self.mu_net.represent(frame_t.unsqueeze(0))[0]
-        init_policy, init_val = [
-            x[0] for x in self.mu_net.predict(init_latent.unsqueeze(0))
-        ]
+        with torch.no_grad():
+            frame_t = torch.einsum("hwc->chw", [torch.tensor(current_frame)])
+            init_latent = self.mu_net.represent(frame_t.unsqueeze(0))[0]
+            init_policy, init_val = [
+                x[0] for x in self.mu_net.predict(init_latent.unsqueeze(0))
+            ]
 
-        # Getting probabilities from logits and a scalar value from the categorical support
-        init_policy_probs = torch.softmax(init_policy, 0)
-        init_val = support_to_scalar(torch.softmax(init_val, 0))
+            # Getting probabilities from logits and a scalar value from the categorical support
+            init_policy_probs = torch.softmax(init_policy, 0)
+            init_val = support_to_scalar(torch.softmax(init_val, 0))
 
-        # initialize the search tree with a root node
-        root_node = TreeNode(
-            latent=init_latent,
-            action_size=self.action_size,
-            val_pred=init_val,
-            pol_pred=init_policy_probs,
-            discount=self.discount,
-            minmax=self.minmax,
-            debug=self.debug,
-        )
+            init_policy_probs = add_dirichlet(
+                init_policy_probs, self.root_dirichlet_alpha, self.explore_frac
+            )
 
-        for i in range(n_simulations):
-            # vital to have to grad or the size of the computation graph quickly becomes gigantic
-            with torch.no_grad():
+            # initialize the search tree with a root node
+            root_node = TreeNode(
+                latent=init_latent,
+                action_size=self.action_size,
+                val_pred=init_val,
+                pol_pred=init_policy_probs,
+                discount=self.discount,
+                minmax=self.minmax,
+                debug=self.debug,
+            )
+
+            for i in range(n_simulations):
+                # vital to have to grad or the size of the computation graph quickly becomes gigantic
                 current_node = root_node
                 new_node = False
 
@@ -168,6 +174,7 @@ class MCTS:
                 # This is how far we will deny the use of the representation function,
                 # requiring the dynamics function to learn to represent the s, a -> s function
                 rollout_depth = len(actions)
+                init_image = torch.einsum("hwc->chw", [torch.tensor(init_image)])
                 latent = self.mu_net.represent(torch.tensor(init_image).unsqueeze(0))[0]
 
                 for i in range(rollout_depth):
@@ -226,6 +233,8 @@ class MCTS:
                 + batch_reward_loss
                 + (batch_value_loss * self.val_weight)
             )
+
+            print(f"v {value_loss}, r {reward_loss}, p {policy_loss}")
 
             # Zero the gradients in the computation graph and then propagate the loss back through it
             self.mu_net.optimizer.zero_grad()
@@ -442,6 +451,12 @@ class MinMax:
             return (val - self.min_value) / (self.max_value - self.min_value)
         else:
             return val
+
+
+def add_dirichlet(prior, dirichlet_alpha, explore_frac):
+    noise = np.random.dirichlet([dirichlet_alpha] * len(prior))
+    new_prior = (1 - explore_frac) * prior + explore_frac * noise
+    return new_prior
 
 
 if __name__ == "__main__":
