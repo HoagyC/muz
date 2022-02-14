@@ -1,18 +1,33 @@
-env_name: CartPole-v0
-latent_size: 20
-log_dir: runs
-val_weight: 0.25
-n_simulations: 100
-buffer_size: 100
+env_name: CartPole-v1
+obs_type: discrete
+
+# Training params
 learning_rate: 0.003
 learning_rate_decay: 0.9
+root_dirichlet_alpha: 0.25
+explore_frac: 0.25
+val_weight: 0.25
 discount: 0.997
 n_batches: 100
 batch_size: 10
-support_width: 10
 rollout_depth: 5
 reward_depth: 5
+buffer_size: 100
+consistency_loss: True
+consistency_weight: 0.5
+reanalyse: True
+
+# Replay params
+priority_replay: False
+priority_alpha: 1
+priority_beta: 1
+
+# Model params
+latent_size: 20
+support_width: 25
+n_simulations: 100
+
+# Setup params  
+log_dir: runs
 debug: False
-root_dirichlet_alpha: 0.25
-explore_frac: 0.25
-render: False
+render: True

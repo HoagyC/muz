@@ -1,4 +1,6 @@
-from random import randrange
+from functools import reduce
+from operator import add
+from random import randrange, random
 
 import numpy as np
 import torch
@@ -6,7 +8,8 @@ import torch
 
 class GameRecord:
     # This class stores the relevant history of a single game
-    def __init__(self, action_size: int, init_frame, discount: float = 0.8):
+    def __init__(self, config, action_size: int, init_frame, discount: float = 0.8):
+        self.config = config
         self.action_size = action_size  # Number of available actions
         self.discount = discount  # Discount rate to be applied to future rewards
 
@@ -18,8 +21,10 @@ class GameRecord:
         self.rewards = []
         # List of the number of times each possible action was sampled at the root of the search tree
         self.search_stats = []
-        #  List of *estimated* rewards at the node reached, as measured by the average reward at the root of the search tree
+        # List of *estimated* total future reward from the node, as measured by the average value at the root of the search tree
         self.values = []
+
+        self.priorities = []
 
     def add_step(self, obs: np.ndarray, action: int, reward: int, root):
         # Root is a TreeNode object at the root of the search tree for the given state
@@ -35,6 +40,23 @@ class GameRecord:
 
         self.search_stats.append([c.num_visits if c else 0 for c in root.children])
         self.values.append(root.average_val)
+
+    def add_priorities(self, n_steps=5):
+        assert len(self.priorities) == 0
+
+        for i, r in enumerate(self.values):
+            if i + n_steps < len(self.values):
+                value_target = self.values[i + n_steps]
+            else:
+                value_target = 0
+            for j in range(n_steps):
+                if len(self.values) < i + j:
+                    value_target += self.values[i + j]
+                else:
+                    break
+
+            priority = (r - value_target) ** 2
+            self.priorities.append(priority)
 
     def make_target(self, ndx: int, reward_depth: int = 5, rollout_depth: int = 3):
         # ndx is where in the record of the game we start
@@ -87,24 +109,36 @@ class GameRecord:
                     [x / total_searches for x in self.search_stats[ndx + i]]
                 )
 
-            # Only take the initial obs as we will use the dynamics function from here in
-            init_obs = self.observations[ndx]
+            # include all observations for consistency loss
+            images = self.observations[ndx : ndx + rollout_depth]
             actions = self.actions[ndx : ndx + rollout_depth]
 
-            return init_obs, actions, target_values, target_rewards, target_policies
+            return images, actions, target_values, target_rewards, target_policies
+
+    def reanalyse(self, mcts):
+        for i, obs in enumerate(self.observations[:-1]):
+            new_root = mcts.search(self.config["n_simulations"], obs)
+            self.values[i] = new_root.average_val
+
+        return self
 
 
 class ReplayBuffer:
     def __init__(self, config):
+        self.config = config
         self.size = config["buffer_size"]  # How many game records to store
         self.buffer = []  # List of stored game records
         self.total_vals = 0  # How many total steps are stored
+
+        self.prioritized_replay = config["priority_replay"]
+        self.priority_alpha = config["priority_alpha"]
 
         # List of start points of each game if the whole buffer were concatenated
         self.game_starts_list = []
 
         self.reward_depth = config["reward_depth"]
         self.rollout_depth = config["rollout_depth"]
+        self.priorities = []
 
     def update_stats(self):
         # Maintain stats for the total length of all games in the buffer
@@ -114,6 +148,10 @@ class ReplayBuffer:
         lengths = [len(x.values) for x in self.buffer]
         self.game_starts_list = [sum(lengths[0:i]) for i in range(len(self.buffer))]
         self.total_vals = sum(lengths)
+        self.priorities = reduce(add, [x.priorities for x in self.buffer], [])
+        self.priorities = [float(p**self.priority_alpha) for p in self.priorities]
+        sum_priorities = sum(self.priorities)
+        self.priorities = [p / sum_priorities for p in self.priorities]
 
     def save_game(self, game):
         # If reached the max size, remove the oldest GameRecord, and update stats accordingly
@@ -127,7 +165,16 @@ class ReplayBuffer:
         batch = []
 
         # Get a random list of points across the length of the buffer to take training examples
-        start_vals = [randrange(self.total_vals) for _ in range(batch_size)]
+
+        if self.prioritized_replay:
+            probabilities = self.priorities
+        else:
+            probabilities = None
+
+        start_vals = np.random.choice(
+            list(range(self.total_vals)), size=batch_size, p=self.priorities
+        )
+
         for val in start_vals:
             # Get the index of the game in the buffer (buf_ndx) and a location in the game (game_ndx)
             buf_ndx, game_ndx = self.get_ndxs(val)
@@ -136,7 +183,7 @@ class ReplayBuffer:
 
             # Gets a series of actions, values, rewards, policies, up to a depth of rollout_depth
             (
-                image,
+                images,
                 actions,
                 target_values,
                 target_rewards,
@@ -148,8 +195,20 @@ class ReplayBuffer:
             )
 
             # Add tuple to batch
+            if self.priorities:
+                weight = 1 / (self.priorities[val] * self.total_vals)
+            else:
+                weight = 1
+
             batch.append(
-                (image, actions, target_values, target_rewards, target_policies)
+                (
+                    images,
+                    actions,
+                    target_values,
+                    target_rewards,
+                    target_policies,
+                    weight,
+                )
             )
 
         return batch
@@ -166,3 +225,10 @@ class ReplayBuffer:
             if l > val:
                 return i - 1, val - self.game_starts_list[i - 1]
         return len(self.buffer) - 1, val - self.game_starts_list[-1]
+
+    def reanalyse(self, mcts):
+        for i, game in enumerate(self.buffer):
+            # Reanalyse on average every 50 games at max size
+            if random() < 2 / len(self.buffer):
+                new_game = game.reanalyse(mcts)
+                self.buffer[i] = new_game

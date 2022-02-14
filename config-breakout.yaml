@@ -8,7 +8,7 @@ learning_rate: 0.0003
 learning_rate_decay: 0.9
 discount: 0.997
 n_batches: 100
-batch_size: 10
+batch_size: 50
 support_width: 10
 rollout_depth: 5
 reward_depth: 5
@@ -16,3 +16,4 @@ debug: False
 root_dirichlet_alpha: 0.25
 explore_frac: 0.25
 render: False
+obs_type: 'image'

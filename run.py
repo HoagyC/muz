@@ -12,16 +12,24 @@ from mcts import MCTS
 from models import MuZeroCartNet, MuZeroAtariNet
 from training import GameRecord, ReplayBuffer
 
-config = yaml.safe_load(open("config-breakout.yaml", "r"))
+if len(sys.argv) > 1:
+    try:
+        config = yaml.safe_load(open("config-" + sys.argv[1] + ".yaml", "r"))
+    except:
+        raise ValueError(f"No config file for game '{sys.argv[1]}'")
+else:
+    config = yaml.safe_load(open("config-breakout.yaml", "r"))
 
 env = gym.make(config["env_name"])
 
 action_size = env.action_space.n
 
 obs_size = env.observation_space.shape
-if len(obs_size) == 1:
+
+if config["obs_type"] == "discrete":
     obs_size = obs_size[0]
-net_type_dict = {"CartPole-v0": MuZeroCartNet, "Breakout-v0": MuZeroAtariNet}
+
+net_type_dict = {"CartPole-v1": MuZeroCartNet, "Breakout-v0": MuZeroAtariNet}
 
 muzero_class = net_type_dict[config["env_name"]]
 
@@ -53,10 +61,13 @@ while True:
     frame = env.reset()
 
     game_record = GameRecord(
-        action_size=action_size, init_frame=frame, discount=config["discount"]
+        config=config,
+        action_size=action_size,
+        init_frame=frame,
+        discount=config["discount"],
     )
 
-    temperature = 10 / (total_games + 10)
+    temperature = 20 / (total_games + 20)
     score = 0
 
     if total_games % 10 == 0:
@@ -79,6 +90,9 @@ while True:
         frames += 1
         score += reward
 
+    game_record.add_priorities()
+    if config["reanalyse"]:
+        memory.reanalyse(mcts)
     memory.save_game(game_record)
     metrics_dict = mcts.train(memory, config["n_batches"])
 
@@ -90,7 +104,7 @@ while True:
     # print(mcts.mu_net.dyna_net.fc1.weight.data)
     # print(mcts.mu_net.dyna_net.fc1.weight.grad)
     print(
-        f"Completed game {total_games + 1:4} with score {score:3}. Loss was {metrics_dict['Loss/total'].item():5.3f}."
+        f"Completed game {total_games + 1:4} with score {score:6}. Loss was {metrics_dict['Loss/total'].item():5.2f}."
     )
     total_games += 1
 

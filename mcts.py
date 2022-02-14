@@ -29,6 +29,7 @@ class MCTS:
 
         # weighting of the value loss relative to policy and reward - paper recommends 0.25
         self.val_weight = config["val_weight"]
+        self.consistency_weight = config["consistency_weight"]
         self.discount = config["discount"]
         self.batch_size = config["batch_size"]
         self.debug = config["debug"]
@@ -57,7 +58,9 @@ class MCTS:
         """
 
         with torch.no_grad():
-            frame_t = torch.einsum("hwc->chw", [torch.tensor(current_frame)])
+            frame_t = torch.tensor(current_frame)
+            if self.config["obs_type"] == "image":
+                frame_t = torch.einsum("hwc->chw", [frame_t])
             init_latent = self.mu_net.represent(frame_t.unsqueeze(0))[0]
             init_policy, init_val = [
                 x[0] for x in self.mu_net.predict(init_latent.unsqueeze(0))
@@ -152,30 +155,49 @@ class MCTS:
         as a head
         """
 
-        total_loss, total_policy_loss, total_reward_loss, total_value_loss = 0, 0, 0, 0
+        (
+            total_loss,
+            total_policy_loss,
+            total_reward_loss,
+            total_value_loss,
+            total_consistency_loss,
+        ) = (0, 0, 0, 0, 0)
 
         for _ in range(n_batches):
-            batch_policy_loss, batch_reward_loss, batch_value_loss = 0, 0, 0
+            (
+                batch_policy_loss,
+                batch_reward_loss,
+                batch_value_loss,
+                batch_consistency_loss,
+            ) = (0, 0, 0, 0)
 
             batch = buffer.get_batch(batch_size=self.batch_size)
+            if self.config["priority_replay"]:
+                batch_weight = 0
             for (
-                init_image,
+                images,
                 actions,
                 target_values,
                 target_rewards,
                 target_policies,
+                weight,
             ) in batch:
                 assert (
                     len(actions)
                     == len(target_policies)
                     == len(target_rewards)
                     == len(target_values)
+                    == len(images)
                 )
+                if self.config["priority_replay"]:
+                    batch_weight += weight
 
                 # This is how far we will deny the use of the representation function,
                 # requiring the dynamics function to learn to represent the s, a -> s function
                 rollout_depth = len(actions)
-                init_image = torch.einsum("hwc->chw", [torch.tensor(init_image)])
+                init_image = images[0]
+                if self.config["obs_type"] == "image":
+                    init_image = torch.einsum("hwc->chw", [torch.tensor(init_image)])
                 latent = self.mu_net.represent(torch.tensor(init_image).unsqueeze(0))[0]
 
                 for i in range(rollout_depth):
@@ -187,6 +209,11 @@ class MCTS:
                     target_policy = torch.tensor(
                         target_policies[i], dtype=torch.float32
                     )
+
+                    if self.config["consistency_loss"]:
+                        target_latent = self.mu_net.represent(
+                            torch.tensor(images[i]).unsqueeze(0)
+                        )[0].detach()
 
                     one_hot_action = nn.functional.one_hot(
                         torch.tensor([actions[i]]).to(dtype=torch.int64),
@@ -212,8 +239,12 @@ class MCTS:
                     # network converges to a maximum rather than increasing linearly with depth
                     latent.register_hook(lambda grad: grad * 0.5)
 
-                    target_reward_s = scalar_to_support(target_reward)
-                    target_value_s = scalar_to_support(target_value)
+                    target_reward_s = scalar_to_support(
+                        target_reward, max_val=self.config["support_width"]
+                    )
+                    target_value_s = scalar_to_support(
+                        target_value, max_val=self.config["support_width"]
+                    )
 
                     # The muzero paper calculates the loss as the squared difference between scalars
                     # but CrossEntropyLoss is used here for a more stable value loss when large values are encountered
@@ -223,20 +254,33 @@ class MCTS:
                     reward_loss = self.mu_net.reward_loss(
                         pred_reward.unsqueeze(0), target_reward_s.unsqueeze(0)
                     )
+                    if self.config["consistency_loss"]:
+                        consistency_loss = self.mu_net.consistency_loss(
+                            latent, target_latent
+                        )
 
                     batch_policy_loss += policy_loss
                     batch_value_loss += value_loss
                     batch_reward_loss += reward_loss
+                    if self.config["consistency_loss"]:
+                        batch_consistency_loss += consistency_loss
 
             # Aggregate the losses to a single measure
             batch_loss = (
                 batch_policy_loss
                 + batch_reward_loss
                 + (batch_value_loss * self.val_weight)
+                + (batch_consistency_loss * self.consistency_weight)
             )
 
+            if self.config["priority_replay"]:
+                print(batch_weight)
+                batch_loss *= batch_weight / len(batch)
+
             if self.config["debug"]:
-                print(f"v {value_loss}, r {reward_loss}, p {policy_loss}")
+                print(
+                    f"v {value_loss}, r {reward_loss}, p {policy_loss}, c {consistency_loss}"
+                )
 
             # Zero the gradients in the computation graph and then propagate the loss back through it
             self.mu_net.optimizer.zero_grad()
@@ -248,12 +292,14 @@ class MCTS:
             total_value_loss += batch_value_loss
             total_policy_loss += batch_policy_loss
             total_reward_loss += batch_reward_loss
+            total_consistency_loss += batch_consistency_loss
 
         metrics_dict = {
             "Loss/total": total_loss,
             "Loss/policy": total_policy_loss,
             "Loss/reward": total_reward_loss,
             "Loss/value": (total_value_loss * self.val_weight),
+            "Loss/consistency": (total_consistency_loss * self.consistency_weight),
         }
 
         return metrics_dict

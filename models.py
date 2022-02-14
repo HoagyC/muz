@@ -82,6 +82,11 @@ class MuZeroCartNet(nn.Module):
         self.policy_loss = nn.CrossEntropyLoss()
         self.reward_loss = nn.CrossEntropyLoss()
         self.value_loss = nn.CrossEntropyLoss()
+        self.cos_sim = nn.CosineSimilarity(dim=0)
+
+    def consistency_loss(self, x1, x2):
+        assert x1.shape == x2.shape
+        return -self.cos_sim(x1.view(-1), x2.view(-1))
 
     def init_optim(self, lr):
         params = (
