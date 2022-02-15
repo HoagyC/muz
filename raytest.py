@@ -10,13 +10,13 @@ import numpy as np
 def calcnp(n):
     for _ in range(n):
         a = np.arange(1e6)
-        b = sum(a ** 2)
+        b = sum(a**2)
 
 
 @ray.remote
 def calcwait(n):
     for _ in range(n):
-        a = sum(x ** 2 for x in range(1000000))
+        a = sum(x**2 for x in range(1000000))
 
 
 @ray.remote

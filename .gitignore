@@ -3,3 +3,4 @@ venv
 .git
 .vscode
 runs
+comps/

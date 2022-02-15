@@ -31,3 +31,5 @@ n_simulations: 100
 log_dir: runs
 debug: False
 render: True
+print_simple: True
+max_games: 100
