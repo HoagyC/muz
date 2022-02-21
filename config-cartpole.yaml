@@ -14,8 +14,8 @@ batch_size: 10
 rollout_depth: 5
 reward_depth: 5
 buffer_size: 100
-consistency_loss: False
-consistency_weight: 0.5
+consistency_loss: True
+consistency_weight: 0.1
 reanalyse: True
 
 # Replay params

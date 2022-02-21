@@ -215,9 +215,17 @@ class MCTS:
                     )
 
                     if self.config["consistency_loss"]:
-                        target_latent = self.mu_net.represent(
-                            torch.tensor(images[i]).unsqueeze(0)
-                        )[0].detach()
+                        if self.config["obs_type"] == "image":
+                            image_chw = torch.einsum(
+                                "hwc->chw", [torch.tensor(images[i])]
+                            )
+                            target_latent = self.mu_net.represent(
+                                image_chw.unsqueeze(0)
+                            )[0].detach()
+                        else:
+                            target_latent = self.mu_net.represent(
+                                torch.tensor(images[i]).unsqueeze(0)
+                            )[0].detach()
 
                     one_hot_action = nn.functional.one_hot(
                         torch.tensor([actions[i]]).to(dtype=torch.int64),
@@ -266,11 +274,11 @@ class MCTS:
                     else:
                         consistency_loss = 0
 
-                    batch_policy_loss += policy_loss
-                    batch_value_loss += value_loss
-                    batch_reward_loss += reward_loss
+                    batch_policy_loss += policy_loss * weight
+                    batch_value_loss += value_loss * weight
+                    batch_reward_loss += reward_loss * weight
                     if self.config["consistency_loss"]:
-                        batch_consistency_loss += consistency_loss
+                        batch_consistency_loss += consistency_loss * weight
 
             # Aggregate the losses to a single measure
             batch_loss = (
@@ -281,7 +289,8 @@ class MCTS:
             )
 
             if self.config["priority_replay"]:
-                batch_loss *= batch_weight / len(batch)
+                average_weight = batch_weight / len(batch)
+                batch_loss /= average_weight
 
             # if self.config["debug"]:
             #     print(

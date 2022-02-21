@@ -2,7 +2,7 @@ env_name: "Breakout-v0"
 obs_type: "image"
 
 # Training params
-learning_rate: 0.003
+learning_rate: 0.001
 learning_rate_decay: 0.9
 weight_decay: 0.0001
 root_dirichlet_alpha: 0.25
@@ -14,7 +14,7 @@ batch_size: 10
 rollout_depth: 5
 reward_depth: 5
 buffer_size: 10
-consistency_loss: False
+consistency_loss: True
 consistency_weight: 0.5
 reanalyse: True
 
