@@ -26,7 +26,7 @@ def run(config):
     net_type_dict = {"CartPole-v1": MuZeroCartNet, "Breakout-v0": MuZeroAtariNet}
 
     muzero_class = net_type_dict[config["env_name"]]
-
+    print(muzero_class)
     muzero_network = muzero_class(action_size, obs_size, config)
     learning_rate = config["learning_rate"]
     muzero_network.init_optim(learning_rate)

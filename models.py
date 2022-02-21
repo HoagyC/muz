@@ -158,7 +158,7 @@ class MuZeroAtariNet(nn.Module):
             + list(self.repr_net.parameters())
         )
         self.optimizer = torch.optim.SGD(
-            params, lr=lr, weight_decay=config["weight_decay"], momentum=0.9
+            params, lr=lr, weight_decay=self.config["weight_decay"], momentum=0.9
         )
 
     def predict(self, latent):
