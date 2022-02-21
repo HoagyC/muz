@@ -1,5 +1,4 @@
 import math
-import os
 import random
 
 import numpy as np
@@ -20,10 +19,9 @@ class MCTS:
     create the tree of potential actions, and to train the relevant models
     """
 
-    def __init__(self, action_size, mu_net, config, log_dir):
+    def __init__(self, action_size, mu_net, config):
         self.action_size = action_size
         self.config = config
-        self.log_dir = log_dir
 
         # a class which holds the three functions as set out in MuZero paper: representation, prediction, dynamics
         # and has an optimizer which updates the parameters for all three simultaneously
@@ -58,10 +56,8 @@ class MCTS:
         and that the value and reward are represented categorically rather than
         as a scalar
         """
-        self.load_model()
 
         with torch.no_grad():
-
             frame_t = torch.tensor(current_frame)
             if self.config["obs_type"] == "image":
                 frame_t = torch.einsum("hwc->chw", [frame_t])
@@ -224,11 +220,11 @@ class MCTS:
                         num_classes=self.action_size,
                     )
 
-                    pred_policy_logits, pred_value_logits = [
+                    pred_policy, pred_value = [
                         x[0] for x in self.mu_net.predict(latent.unsqueeze(0))
                     ]
 
-                    latent, pred_reward_logits = [
+                    latent, pred_reward = [
                         x[0]
                         for x in self.mu_net.dynamics(
                             latent.unsqueeze(0), one_hot_action
@@ -236,7 +232,7 @@ class MCTS:
                     ]
 
                     policy_loss = self.mu_net.policy_loss(
-                        pred_policy_logits.unsqueeze(0), target_policy.unsqueeze(0)
+                        pred_policy.unsqueeze(0), target_policy.unsqueeze(0)
                     )
 
                     # We scale down the gradient, I believe so that the gradient at the base of the unrolled
@@ -244,32 +240,24 @@ class MCTS:
                     latent.register_hook(lambda grad: grad * 0.5)
 
                     target_reward_s = scalar_to_support(
-                        target_reward, half_width=self.config["support_width"]
+                        target_reward, max_val=self.config["support_width"]
                     )
-
                     target_value_s = scalar_to_support(
-                        target_value, half_width=self.config["support_width"]
-                    )
-
-                    print(
-                        target_value,
-                        support_to_scalar(torch.softmax(pred_value_logits, dim=0)),
+                        target_value, max_val=self.config["support_width"]
                     )
 
                     # The muzero paper calculates the loss as the squared difference between scalars
                     # but CrossEntropyLoss is used here for a more stable value loss when large values are encountered
                     value_loss = self.mu_net.value_loss(
-                        pred_value_logits.unsqueeze(0), target_value_s.unsqueeze(0)
+                        pred_value.unsqueeze(0), target_value_s.unsqueeze(0)
                     )
                     reward_loss = self.mu_net.reward_loss(
-                        pred_reward_logits.unsqueeze(0), target_reward_s.unsqueeze(0)
+                        pred_reward.unsqueeze(0), target_reward_s.unsqueeze(0)
                     )
                     if self.config["consistency_loss"]:
                         consistency_loss = self.mu_net.consistency_loss(
                             latent, target_latent
                         )
-                    else:
-                        consistency_loss = 0
 
                     batch_policy_loss += policy_loss
                     batch_value_loss += value_loss
@@ -286,12 +274,13 @@ class MCTS:
             )
 
             if self.config["priority_replay"]:
+                print(batch_weight)
                 batch_loss *= batch_weight / len(batch)
 
-            # if self.config["debug"]:
-            #     print(
-            #         f"v {value_loss}, r {reward_loss}, p {policy_loss}, c {consistency_loss}"
-            #     )
+            if self.config["debug"]:
+                print(
+                    f"v {value_loss}, r {reward_loss}, p {policy_loss}, c {consistency_loss}"
+                )
 
             # Zero the gradients in the computation graph and then propagate the loss back through it
             self.mu_net.optimizer.zero_grad()
@@ -313,8 +302,6 @@ class MCTS:
             "Loss/consistency": (total_consistency_loss * self.consistency_weight),
         }
 
-        self.save_model()
-
         return metrics_dict
 
     def backpropagate(
@@ -331,15 +318,6 @@ class MCTS:
             node.update_val(value)
             value = node.reward + (value * self.discount)
             self.minmax.update(value)
-
-    def save_model(self):
-        path = os.path.join(self.log_dir, "latest_model_dict.pt")
-        torch.save(self.mu_net.state_dict(), path)
-
-    def load_model(self):
-        path = os.path.join(self.log_dir, "latest_model_dict.pt")
-        if os.path.exists(path):
-            self.mu_net.load_state_dict(torch.load(path))
 
 
 class TreeNode:

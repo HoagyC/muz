@@ -70,6 +70,7 @@ class CartPred(nn.Module):
 class MuZeroCartNet(nn.Module):
     def __init__(self, action_size: int, obs_size, config: dict):
         super().__init__()
+        self.config = config
         self.action_size = action_size
         self.obs_size = obs_size
         self.latent_size = config["latent_size"]
@@ -94,7 +95,9 @@ class MuZeroCartNet(nn.Module):
             + list(self.dyna_net.parameters())
             + list(self.repr_net.parameters())
         )
-        self.optimizer = torch.optim.SGD(params, lr=lr, weight_decay=1e-4, momentum=0.9)
+        self.optimizer = torch.optim.SGD(
+            params, lr=lr, weight_decay=self.config["learning_rate_decay"], momentum=0.9
+        )
 
     def predict(self, latent):
         policy, value = self.pred_net(latent)
@@ -112,6 +115,7 @@ class MuZeroCartNet(nn.Module):
 class MuZeroAtariNet(nn.Module):
     def __init__(self, action_size, obs_size, config):
         super().__init__()
+        self.config = config
 
         self.x_pad, self.y_pad = 0, 0
         assert len(obs_size) == 3
@@ -331,7 +335,7 @@ def support_to_scalar(support, epsilon=0.001):
     return output
 
 
-def scalar_to_support(scalar: torch.Tensor, epsilon=0.001, max_val: int = 10):
+def scalar_to_support(scalar: torch.Tensor, epsilon=0.001, half_width: int = 10):
     # Scaling the value function and converting to discrete support as found in
     # Appendix F if MuZero
 
@@ -340,12 +344,12 @@ def scalar_to_support(scalar: torch.Tensor, epsilon=0.001, max_val: int = 10):
         torch.sqrt(torch.abs(scalar) + 1) - 1 + epsilon * scalar
     )
 
-    h_x.clamp_(-max_val, max_val)
+    h_x.clamp_(-half_width, half_width)
 
-    upper_ndx = (torch.ceil(h_x) + max_val).to(dtype=torch.int64)
-    lower_ndx = (torch.floor(h_x) + max_val).to(dtype=torch.int64)
+    upper_ndx = (torch.ceil(h_x) + half_width).to(dtype=torch.int64)
+    lower_ndx = (torch.floor(h_x) + half_width).to(dtype=torch.int64)
     ratio = h_x % 1
-    support = torch.zeros(2 * max_val + 1)
+    support = torch.zeros(2 * half_width + 1)
 
     if upper_ndx == lower_ndx:
         support[upper_ndx] = 1

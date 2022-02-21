@@ -4,7 +4,6 @@ from random import randrange, random
 
 import numpy as np
 import torch
-import ray
 
 
 class GameRecord:
@@ -87,14 +86,10 @@ class GameRecord:
                 # then this is our base value (after discounting)
                 # else we start at 0
                 bootstrap_index = ndx + reward_depth + i
-                # #print(
-                #     f"bootstrap {bootstrap_index} ndx {ndx} reward depth {reward_depth} i {i} game_len {game_len}"
-                # )
                 if bootstrap_index < len(self.values):
                     target_value = self.values[bootstrap_index] * (
                         self.discount**reward_depth
                     )
-                    # print(target_value)
                 else:
                     target_value = 0
 
@@ -121,7 +116,6 @@ class GameRecord:
             return images, actions, target_values, target_rewards, target_policies
 
     def reanalyse(self, mcts):
-        print("reanalysing")
         for i, obs in enumerate(self.observations[:-1]):
             new_root = mcts.search(self.config["n_simulations"], obs)
             self.values[i] = new_root.average_val
@@ -178,7 +172,7 @@ class ReplayBuffer:
             probabilities = None
 
         start_vals = np.random.choice(
-            list(range(self.total_vals)), size=batch_size, p=probabilities
+            list(range(self.total_vals)), size=batch_size, p=self.priorities
         )
 
         for val in start_vals:
@@ -233,15 +227,8 @@ class ReplayBuffer:
         return len(self.buffer) - 1, val - self.game_starts_list[-1]
 
     def reanalyse(self, mcts):
-        # print("go")
         for i, game in enumerate(self.buffer):
             # Reanalyse on average every 50 games at max size
             if random() < 2 / len(self.buffer):
                 new_game = game.reanalyse(mcts)
                 self.buffer[i] = new_game
-
-
-@ray.remote
-class Reanalyser:
-    def __init__(self):
-        pass

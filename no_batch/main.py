@@ -31,15 +31,12 @@ def run(config):
     learning_rate = config["learning_rate"]
     muzero_network.init_optim(learning_rate)
 
-    if config["log_name"] == "None":
-        config["log_name"] = datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
+    mcts = MCTS(action_size=action_size, mu_net=muzero_network, config=config)
 
-    log_dir = os.path.join(config["log_dir"], config["log_name"])
-    tb_writer = SummaryWriter(log_dir=log_dir)
-
-    mcts = MCTS(
-        action_size=action_size, mu_net=muzero_network, config=config, log_dir=log_dir
+    log_dir = os.path.join(
+        config["log_dir"], datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
     )
+    tb_writer = SummaryWriter(log_dir=log_dir)
 
     memory = ReplayBuffer(config)
     # open muz implementation uses a GameHistory class

@@ -1,5 +1,5 @@
-env_name: CartPole-v1
-obs_type: discrete
+env_name: "CartPole-v1"
+obs_type: "discrete"
 
 # Training params
 learning_rate: 0.003
@@ -13,9 +13,9 @@ batch_size: 10
 rollout_depth: 5
 reward_depth: 5
 buffer_size: 100
-consistency_loss: True
+consistency_loss: False
 consistency_weight: 0.5
-reanalyse: True
+reanalyse: False
 
 # Replay params
 priority_replay: False
@@ -28,8 +28,9 @@ support_width: 25
 n_simulations: 100
 
 # Setup params  
-log_dir: runs
-debug: False
+log_dir: "runs"
+log_name: "None"
+debug: True
 render: True
 print_simple: True
 max_games: 100
