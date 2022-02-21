@@ -121,7 +121,6 @@ class GameRecord:
             return images, actions, target_values, target_rewards, target_policies
 
     def reanalyse(self, mcts):
-        print("reanalysing")
         for i, obs in enumerate(self.observations[:-1]):
             new_root = mcts.search(self.config["n_simulations"], obs)
             self.values[i] = new_root.average_val
