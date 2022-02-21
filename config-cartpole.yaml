@@ -4,6 +4,7 @@ obs_type: "discrete"
 # Training params
 learning_rate: 0.003
 learning_rate_decay: 0.9
+weight_decay: 0.0001
 root_dirichlet_alpha: 0.25
 explore_frac: 0.25
 val_weight: 0.25
@@ -15,7 +16,7 @@ reward_depth: 5
 buffer_size: 100
 consistency_loss: False
 consistency_weight: 0.5
-reanalyse: False
+reanalyse: True
 
 # Replay params
 priority_replay: False
@@ -30,7 +31,7 @@ n_simulations: 100
 # Setup params  
 log_dir: "runs"
 log_name: "None"
-debug: True
+debug: False
 render: True
 print_simple: True
 max_games: 100

@@ -96,7 +96,7 @@ class MuZeroCartNet(nn.Module):
             + list(self.repr_net.parameters())
         )
         self.optimizer = torch.optim.SGD(
-            params, lr=lr, weight_decay=self.config["learning_rate_decay"], momentum=0.9
+            params, lr=lr, weight_decay=self.config["weight_decay"], momentum=0.9
         )
 
     def predict(self, latent):
@@ -157,7 +157,9 @@ class MuZeroAtariNet(nn.Module):
             + list(self.dyna_net.parameters())
             + list(self.repr_net.parameters())
         )
-        self.optimizer = torch.optim.SGD(params, lr=lr, weight_decay=1e-4, momentum=0.9)
+        self.optimizer = torch.optim.SGD(
+            params, lr=lr, weight_decay=config["weight_decay"], momentum=0.9
+        )
 
     def predict(self, latent):
         policy, value = self.pred_net(latent)

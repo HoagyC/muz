@@ -251,11 +251,6 @@ class MCTS:
                         target_value, half_width=self.config["support_width"]
                     )
 
-                    print(
-                        target_value,
-                        support_to_scalar(torch.softmax(pred_value_logits, dim=0)),
-                    )
-
                     # The muzero paper calculates the loss as the squared difference between scalars
                     # but CrossEntropyLoss is used here for a more stable value loss when large values are encountered
                     value_loss = self.mu_net.value_loss(
@@ -296,7 +291,6 @@ class MCTS:
             # Zero the gradients in the computation graph and then propagate the loss back through it
             self.mu_net.optimizer.zero_grad()
             batch_loss.backward()
-
             self.mu_net.optimizer.step()
 
             total_loss += batch_loss
