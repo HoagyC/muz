@@ -281,25 +281,33 @@ class MCTS:
                         batch_consistency_loss += consistency_loss * weight
 
             # Aggregate the losses to a single measure
-            batch_loss = (
-                batch_policy_loss
-                + batch_reward_loss
-                + (batch_value_loss * self.val_weight)
-                + (batch_consistency_loss * self.consistency_weight)
-            )
+            # batch_loss = (
+            #     batch_policy_loss
+            #     + batch_reward_loss
+            #     + (batch_value_loss * self.val_weight)
+            #     + (batch_consistency_loss * self.consistency_weight)
+            # )
+            batch_loss = batch_policy_loss
 
             if self.config["priority_replay"]:
                 average_weight = batch_weight / len(batch)
                 batch_loss /= average_weight
 
-            # if self.config["debug"]:
-            #     print(
-            #         f"v {value_loss}, r {reward_loss}, p {policy_loss}, c {consistency_loss}"
-            #     )
+            if self.config["debug"]:
+                print(
+                    f"v {batch_value_loss}, r {batch_reward_loss}, p {batch_policy_loss}, c {consistency_loss}"
+                )
+                print(
+                    f"v {pred_value_logits}, r {pred_reward_logits}, p {pred_policy_logits}"
+                )
 
             # Zero the gradients in the computation graph and then propagate the loss back through it
             self.mu_net.optimizer.zero_grad()
             batch_loss.backward()
+            if self.config["grad_clip"] is not None:
+                torch.nn.utils.clip_grad_norm_(
+                    self.mu_net.parameters(), self.config["grad_clip"]
+                )
             self.mu_net.optimizer.step()
 
             total_loss += batch_loss

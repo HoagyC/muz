@@ -200,8 +200,8 @@ class ReplayBuffer:
             )
 
             # Add tuple to batch
-            if self.priorities:
-                weight = 1 / (self.priorities[val] * self.total_vals)
+            if self.prioritized_replay:
+                weight = 1 / self.priorities[val]
             else:
                 weight = 1
 

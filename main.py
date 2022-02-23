@@ -68,11 +68,11 @@ def run(config):
         temperature = 20 / (total_games + 20)
         score = 0
 
-        if total_games % 10 == 0:
+        if total_games % 10 == 0 and total_games > 0:
             learning_rate = learning_rate * config["learning_rate_decay"]
             mcts.mu_net.init_optim(learning_rate)
 
-        while not over:
+        while not over and frames < config["max_frames"]:
             tree = mcts.search(config["n_simulations"], frame)
             action = tree.pick_game_action(temperature=temperature)
 

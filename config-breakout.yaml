@@ -2,9 +2,9 @@ env_name: "Breakout-v0"
 obs_type: "image"
 
 # Training params
-learning_rate: 0.001
+learning_rate: 0.003
 learning_rate_decay: 0.9
-weight_decay: 0.0001
+weight_decay: 0.1
 root_dirichlet_alpha: 0.25
 explore_frac: 0.25
 val_weight: 0.25
@@ -17,6 +17,7 @@ buffer_size: 10
 consistency_loss: True
 consistency_weight: 0.5
 reanalyse: True
+grad_clip: 1
 
 # Replay params
 priority_replay: False
@@ -35,3 +36,5 @@ debug: False
 render: False
 print_simple: True
 max_games: 100
+
+max_frames: 3000
