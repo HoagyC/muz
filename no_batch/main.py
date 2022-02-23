@@ -26,17 +26,20 @@ def run(config):
     net_type_dict = {"CartPole-v1": MuZeroCartNet, "Breakout-v0": MuZeroAtariNet}
 
     muzero_class = net_type_dict[config["env_name"]]
-
+    print(muzero_class)
     muzero_network = muzero_class(action_size, obs_size, config)
     learning_rate = config["learning_rate"]
     muzero_network.init_optim(learning_rate)
 
-    mcts = MCTS(action_size=action_size, mu_net=muzero_network, config=config)
+    if config["log_name"] == "None":
+        config["log_name"] = datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
 
-    log_dir = os.path.join(
-        config["log_dir"], datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
-    )
+    log_dir = os.path.join(config["log_dir"], config["log_name"])
     tb_writer = SummaryWriter(log_dir=log_dir)
+
+    mcts = MCTS(
+        action_size=action_size, mu_net=muzero_network, config=config, log_dir=log_dir
+    )
 
     memory = ReplayBuffer(config)
     # open muz implementation uses a GameHistory class
@@ -65,11 +68,11 @@ def run(config):
         temperature = 20 / (total_games + 20)
         score = 0
 
-        if total_games % 10 == 0:
+        if total_games % 10 == 0 and total_games > 0:
             learning_rate = learning_rate * config["learning_rate_decay"]
             mcts.mu_net.init_optim(learning_rate)
 
-        while not over:
+        while not over and frames < config["max_frames"]:
             tree = mcts.search(config["n_simulations"], frame)
             action = tree.pick_game_action(temperature=temperature)
 
