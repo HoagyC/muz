@@ -83,7 +83,7 @@ class MuZeroCartNet(nn.Module):
         self.policy_loss = nn.CrossEntropyLoss(reduction="sum")
         self.reward_loss = nn.CrossEntropyLoss(reduction="sum")
         self.value_loss = nn.CrossEntropyLoss(reduction="sum")
-        self.cos_sim = nn.CosineSimilarity(dim=0)
+        self.cos_sim = nn.CosineSimilarity(dim=1)
 
     def consistency_loss(self, x1, x2):
         assert x1.shape == x2.shape
@@ -147,9 +147,9 @@ class MuZeroAtariNet(nn.Module):
             self.x_pad, self.y_pad, self.latent_depth
         )
 
-        self.policy_loss = nn.CrossEntropyLoss()
-        self.reward_loss = nn.CrossEntropyLoss()
-        self.value_loss = nn.CrossEntropyLoss()
+        self.policy_loss = nn.CrossEntropyLoss(reduction="sum")
+        self.reward_loss = nn.CrossEntropyLoss(reduction="sum")
+        self.value_loss = nn.CrossEntropyLoss(reduction="sum")
         self.cos_sim = nn.CosineSimilarity(dim=1)
 
     def consistency_loss(self, x1, x2):

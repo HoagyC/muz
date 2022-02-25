@@ -87,6 +87,7 @@ class MCTS:
                 discount=self.discount,
                 minmax=self.minmax,
                 debug=self.debug,
+                num_visits=0,
             )
 
             for i in range(n_simulations):
@@ -95,8 +96,9 @@ class MCTS:
                 new_node = False
 
                 # search list tracks the route of the simulation through the tree
-                search_list = [current_node]
+                search_list = []
                 while not new_node:
+                    search_list.append(current_node)
                     value_pred = current_node.val_pred
                     policy_pred = current_node.pol_pred
                     latent = current_node.latent
@@ -141,8 +143,6 @@ class MCTS:
                     else:
                         # If we have already explored this node then we take the child as our new current node
                         current_node = current_node.children[action]
-
-                    search_list.append(current_node)
 
                 # Updates the visit counts and average values of the nodes that have been traversed
                 self.backpropagate(search_list, new_val)
@@ -265,8 +265,6 @@ class MCTS:
                     pred_policy_logits[screen_t], target_policy_stepi[screen_t]
                 )
                 # print(policy_loss)
-
-                # breakpoint()
                 if self.config["consistency_loss"]:
                     consistency_loss = self.mu_net.consistency_loss(
                         latents[screen_t], target_latents[screen_t]
@@ -336,9 +334,7 @@ class MCTS:
     ):
         """Going backward through the visited nodes, we increase the visit count of each by one
         and set the value, discounting the value at the node ahead, but then adding the reward"""
-
         for node in search_list[::-1]:
-
             node.num_visits += 1
             node.update_val(value)
             value = node.reward + (value * self.discount)
@@ -372,6 +368,7 @@ class TreeNode:
         discount=1,
         minmax=None,
         debug=False,
+        num_visits=1,
     ):
 
         self.action_size = action_size
@@ -381,7 +378,7 @@ class TreeNode:
         self.pol_pred = pol_pred
         self.parent = parent
         self.average_val = 0
-        self.num_visits = 0
+        self.num_visits = num_visits
         self.reward = reward
 
         self.discount = discount
