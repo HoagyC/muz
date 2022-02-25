@@ -80,9 +80,9 @@ class MuZeroCartNet(nn.Module):
         self.dyna_net = CartDyna(self.action_size, self.latent_size, self.support_width)
         self.repr_net = CartRepr(self.obs_size, self.latent_size)
 
-        self.policy_loss = nn.CrossEntropyLoss()
-        self.reward_loss = nn.CrossEntropyLoss()
-        self.value_loss = nn.CrossEntropyLoss()
+        self.policy_loss = nn.CrossEntropyLoss(reduction="sum")
+        self.reward_loss = nn.CrossEntropyLoss(reduction="sum")
+        self.value_loss = nn.CrossEntropyLoss(reduction="sum")
         self.cos_sim = nn.CosineSimilarity(dim=0)
 
     def consistency_loss(self, x1, x2):
@@ -150,7 +150,7 @@ class MuZeroAtariNet(nn.Module):
         self.policy_loss = nn.CrossEntropyLoss()
         self.reward_loss = nn.CrossEntropyLoss()
         self.value_loss = nn.CrossEntropyLoss()
-        self.cos_sim = nn.CosineSimilarity(dim=0)
+        self.cos_sim = nn.CosineSimilarity(dim=1)
 
     def consistency_loss(self, x1, x2):
         assert x1.shape == x2.shape
@@ -214,7 +214,7 @@ class ResBlock(torch.nn.Module):
 
 #         self.conv1 = nn.Conv2d(
 #             in_channels, out_channels, stride=stride, padding=1, kernel_size=3
-#         )
+#         )[
 #         self.batch_norm1 = nn.BatchNorm2d(num_features=out_channels, momentum=momentum)
 
 #         self.conv2 = nn.Conv2d(
@@ -226,7 +226,7 @@ class ResBlock(torch.nn.Module):
 #     def forward(self, x):
 #         identity = x
 #         out = torch.relu(self.batch_norm1(self.conv1(x)))
-#         out = self.batch_norm2(self.conv2(out))
+#         out = self.batch_norm2(self.conv2(out))]
 
 #         if self.downsample is not None:
 #             identity = self.downsample(iout)
@@ -367,22 +367,18 @@ def scalar_to_support(scalar: torch.Tensor, epsilon=0.001, half_width: int = 10)
     # Scaling the value function and converting to discrete support as found in
     # Appendix F if MuZero
 
-    sign_x = 1 if scalar >= 0 else -1
-    h_x = torch.sign(scalar) * (
-        torch.sqrt(torch.abs(scalar) + 1) - 1 + epsilon * scalar
-    )
+    sign_x = torch.where(scalar >= 0, 1, -1)
+    h_x = sign_x * (torch.sqrt(torch.abs(scalar) + 1) - 1 + epsilon * scalar)
 
     h_x.clamp_(-half_width, half_width)
 
-    upper_ndx = (torch.ceil(h_x) + half_width).to(dtype=torch.int64)
-    lower_ndx = (torch.floor(h_x) + half_width).to(dtype=torch.int64)
+    upper_ndxs = (torch.ceil(h_x) + half_width).to(dtype=torch.int64)
+    lower_ndxs = (torch.floor(h_x) + half_width).to(dtype=torch.int64)
     ratio = h_x % 1
-    support = torch.zeros(2 * half_width + 1)
+    support = torch.zeros(*scalar.shape, 2 * half_width + 1)
 
-    if upper_ndx == lower_ndx:
-        support[upper_ndx] = 1
-    else:
-        support[lower_ndx] = 1 - ratio
-        support[upper_ndx] = ratio
+    support.scatter_(1, upper_ndxs.unsqueeze(1), ratio.unsqueeze(1))
+    # do lower ndxs second as if lower==upper, ratio = 0, 1 - ratio = 1
+    support.scatter_(1, lower_ndxs.unsqueeze(1), (1 - ratio).unsqueeze(1))
 
     return support

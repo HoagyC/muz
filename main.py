@@ -23,7 +23,11 @@ def run(config):
     if config["obs_type"] == "discrete":
         obs_size = obs_size[0]
 
-    net_type_dict = {"CartPole-v1": MuZeroCartNet, "Breakout-v0": MuZeroAtariNet}
+    net_type_dict = {
+        "CartPole-v1": MuZeroCartNet,
+        "Breakout-v0": MuZeroAtariNet,
+        "Freeway-v0": MuZeroAtariNet,
+    }
 
     muzero_class = net_type_dict[config["env_name"]]
     print(muzero_class)

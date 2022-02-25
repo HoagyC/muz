@@ -175,119 +175,120 @@ class MCTS:
                 batch_consistency_loss,
             ) = (0, 0, 0, 0)
 
-            batch = buffer.get_batch(batch_size=self.batch_size)
-            if self.config["priority_replay"]:
-                batch_weight = 0
-            for (
+            (
                 images,
                 actions,
                 target_values,
                 target_rewards,
                 target_policies,
-                weight,
-            ) in batch:
-                assert (
-                    len(actions)
-                    == len(target_policies)
-                    == len(target_rewards)
-                    == len(target_values)
-                    == len(images)
-                )
-                if self.config["priority_replay"]:
-                    batch_weight += weight
+                weights,
+                depths,
+            ) = buffer.get_batch(batch_size=self.batch_size)
 
-                # This is how far we will deny the use of the representation function,
-                # requiring the dynamics function to learn to represent the s, a -> s function
-                rollout_depth = len(actions)
-                init_image = images[0]
-                if self.config["obs_type"] == "image":
-                    init_image = torch.einsum("hwc->chw", [torch.tensor(init_image)])
-                latent = self.mu_net.represent(torch.tensor(init_image).unsqueeze(0))[0]
+            if self.config["priority_replay"]:
+                batch_weight = 0
 
-                for i in range(rollout_depth):
-                    # We must do tthis sequentially, as the input to the dynamics function requires the output
-                    # from the previous dynamics function
+            assert (
+                len(actions)
+                == len(target_policies)
+                == len(target_rewards)
+                == len(target_values)
+                == len(images)
+            )
+            assert self.config["rollout_depth"] == actions.shape[1]
 
-                    target_value = torch.tensor(target_values[i], dtype=torch.float32)
-                    target_reward = torch.tensor(target_rewards[i], dtype=torch.float32)
-                    target_policy = torch.tensor(
-                        target_policies[i], dtype=torch.float32
-                    )
+            if self.config["priority_replay"]:
+                batch_weight += weight
 
-                    if self.config["consistency_loss"]:
-                        if self.config["obs_type"] == "image":
-                            image_chw = torch.einsum(
-                                "hwc->chw", [torch.tensor(images[i])]
-                            )
-                            target_latent = self.mu_net.represent(
-                                image_chw.unsqueeze(0)
-                            )[0].detach()
-                        else:
-                            target_latent = self.mu_net.represent(
-                                torch.tensor(images[i]).unsqueeze(0)
-                            )[0].detach()
+            # This is how far we will deny the use of the representation function,
+            # requiring the dynamics function to learn to represent the s, a -> s function
+            # All batch tensors are index first by batch x rollout
+            init_images = images[:, 0]
 
-                    one_hot_action = nn.functional.one_hot(
-                        torch.tensor([actions[i]]).to(dtype=torch.int64),
-                        num_classes=self.action_size,
-                    )
+            if self.config["obs_type"] == "image":
+                init_images = torch.einsum("bhwc->bchw", init_images)
 
-                    pred_policy_logits, pred_value_logits = [
-                        x[0] for x in self.mu_net.predict(latent.unsqueeze(0))
-                    ]
+            latents = self.mu_net.represent(init_images)
 
-                    latent, pred_reward_logits = [
-                        x[0]
-                        for x in self.mu_net.dynamics(
-                            latent.unsqueeze(0), one_hot_action
-                        )
-                    ]
+            for i in range(self.config["rollout_depth"]):
+                # We must do tthis sequentially, as the input to the dynamics function requires the output
+                # from the previous dynamics function
 
-                    policy_loss = self.mu_net.policy_loss(
-                        pred_policy_logits.unsqueeze(0), target_policy.unsqueeze(0)
-                    )
+                target_value_stepi = target_values[:, i]
+                target_reward_stepi = target_rewards[:, i]
+                target_policy_stepi = target_policies[:, i]
 
-                    # We scale down the gradient, I believe so that the gradient at the base of the unrolled
-                    # network converges to a maximum rather than increasing linearly with depth
-                    latent.register_hook(lambda grad: grad * 0.5)
-
-                    target_reward_s = scalar_to_support(
-                        target_reward, half_width=self.config["support_width"]
-                    )
-
-                    target_value_s = scalar_to_support(
-                        target_value, half_width=self.config["support_width"]
-                    )
-
-                    # The muzero paper calculates the loss as the squared difference between scalars
-                    # but CrossEntropyLoss is used here for a more stable value loss when large values are encountered
-                    value_loss = self.mu_net.value_loss(
-                        pred_value_logits.unsqueeze(0), target_value_s.unsqueeze(0)
-                    )
-                    reward_loss = self.mu_net.reward_loss(
-                        pred_reward_logits.unsqueeze(0), target_reward_s.unsqueeze(0)
-                    )
-                    if self.config["consistency_loss"]:
-                        consistency_loss = self.mu_net.consistency_loss(
-                            latent, target_latent
-                        )
+                if self.config["consistency_loss"]:
+                    if self.config["obs_type"] == "image":
+                        images_chw = torch.einsum("bhwc->bchw", images[:, i])
+                        target_latents = self.mu_net.represent(images_chw).detach()
                     else:
-                        consistency_loss = 0
+                        target_latents = self.mu_net.represent(images[:, i]).detach()
 
-                    batch_policy_loss += policy_loss * weight
-                    batch_value_loss += value_loss * weight
-                    batch_reward_loss += reward_loss * weight
-                    if self.config["consistency_loss"]:
-                        batch_consistency_loss += consistency_loss * weight
+                one_hot_actions = nn.functional.one_hot(
+                    actions[:, i],
+                    num_classes=self.action_size,
+                )
+
+                pred_policy_logits, pred_value_logits = self.mu_net.predict(latents)
+
+                new_latents, pred_reward_logits = self.mu_net.dynamics(
+                    latents, one_hot_actions
+                )
+
+                # We scale down the gradient, I believe so that the gradient at the base of the unrolled
+                # network converges to a maximum rather than increasing linearly with depth
+                new_latents.register_hook(lambda grad: grad * 0.5)
+
+                target_reward_sup_i = scalar_to_support(
+                    target_reward_stepi, half_width=self.config["support_width"]
+                )
+
+                target_value_sup_i = scalar_to_support(
+                    target_value_stepi, half_width=self.config["support_width"]
+                )
+
+                screen_t = torch.tensor(depths) > i
+
+                # Cutting off cases where there's not enough data for a full rollout
+
+                # The muzero paper calculates the loss as the squared difference between scalars
+                # but CrossEntropyLoss is used here for a more stable value loss when large values are encountered
+                value_loss = self.mu_net.value_loss(
+                    pred_value_logits[screen_t], target_value_sup_i[screen_t]
+                )
+                reward_loss = self.mu_net.reward_loss(
+                    pred_reward_logits[screen_t], target_reward_sup_i[screen_t]
+                )
+                # print(pred_policy_logits, target_policy_stepi)
+                policy_loss = self.mu_net.policy_loss(
+                    pred_policy_logits[screen_t], target_policy_stepi[screen_t]
+                )
+                # print(policy_loss)
+
+                # breakpoint()
+                if self.config["consistency_loss"]:
+                    consistency_loss = self.mu_net.consistency_loss(
+                        latents[screen_t], target_latents[screen_t]
+                    )
+                else:
+                    consistency_loss = 0
+
+                batch_policy_loss += policy_loss
+                batch_value_loss += value_loss
+                batch_reward_loss += reward_loss
+                if self.config["consistency_loss"]:
+                    batch_consistency_loss += consistency_loss
+
+                latents = new_latents
 
             # Aggregate the losses to a single measure
-            # batch_loss = (
-            #     batch_policy_loss
-            #     + batch_reward_loss
-            #     + (batch_value_loss * self.val_weight)
-            #     + (batch_consistency_loss * self.consistency_weight)
-            # )
-            batch_loss = batch_policy_loss
+            batch_loss = (
+                batch_policy_loss
+                + batch_reward_loss
+                + (batch_value_loss * self.val_weight)
+                + (batch_consistency_loss * self.consistency_weight)
+            )
 
             if self.config["priority_replay"]:
                 average_weight = batch_weight / len(batch)
@@ -297,14 +298,14 @@ class MCTS:
                 print(
                     f"v {batch_value_loss}, r {batch_reward_loss}, p {batch_policy_loss}, c {consistency_loss}"
                 )
-                print(
-                    f"v {pred_value_logits}, r {pred_reward_logits}, p {pred_policy_logits}"
-                )
+                # print(
+                #     f"v {pred_value_logits}, r {pred_reward_logits}, p {pred_policy_logits}"
+                # )
 
             # Zero the gradients in the computation graph and then propagate the loss back through it
             self.mu_net.optimizer.zero_grad()
             batch_loss.backward()
-            if self.config["grad_clip"] is not None:
+            if self.config["grad_clip"] != 0:
                 torch.nn.utils.clip_grad_norm_(
                     self.mu_net.parameters(), self.config["grad_clip"]
                 )

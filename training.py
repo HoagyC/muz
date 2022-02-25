@@ -59,6 +59,12 @@ class GameRecord:
             priority = (r - value_target) ** 2
             self.priorities.append(priority)
 
+    def pad_target(self, target_l, pad_len):
+        target_a = np.array(target_l)
+        pad_l = [(0, pad_len)] + [(0, 0)] * (target_a.ndim - 1)
+        target_a = np.pad(target_a, pad_l, mode="constant")
+        return target_a
+
     def make_target(self, ndx: int, reward_depth: int = 5, rollout_depth: int = 3):
         # ndx is where in the record of the game we start
         # reward_depth is how far into the future we use the actual reward - beyond this we use predicted value
@@ -78,23 +84,21 @@ class GameRecord:
             game_len = len(self.search_stats)
 
             # Make sure we don't try to roll out beyond end of game
-            rollout_depth = min(rollout_depth, game_len - ndx)
+            actual_rollout_depth = min(rollout_depth, game_len - ndx)
 
-            for i in range(rollout_depth):
+            for i in range(actual_rollout_depth):
                 target_rewards.append(self.rewards[ndx + i])
 
                 # If we have an estimated value at the current index + reward_depth
                 # then this is our base value (after discounting)
                 # else we start at 0
                 bootstrap_index = ndx + reward_depth + i
-                # #print(
-                #     f"bootstrap {bootstrap_index} ndx {ndx} reward depth {reward_depth} i {i} game_len {game_len}"
-                # )
+
                 if bootstrap_index < len(self.values):
                     target_value = self.values[bootstrap_index] * (
                         self.discount**reward_depth
                     )
-                    # print(target_value)
+
                 else:
                     target_value = 0
 
@@ -115,10 +119,27 @@ class GameRecord:
                 )
 
             # include all observations for consistency loss
-            images = self.observations[ndx : ndx + rollout_depth]
-            actions = self.actions[ndx : ndx + rollout_depth]
+            images = self.observations[ndx : ndx + actual_rollout_depth]
+            actions = self.actions[ndx : ndx + actual_rollout_depth]
 
-            return images, actions, target_values, target_rewards, target_policies
+            unused_rollout = rollout_depth - actual_rollout_depth
+
+            images_a = self.pad_target(images, unused_rollout)
+            actions_a = self.pad_target(actions, unused_rollout)
+            target_policies_a = self.pad_target(target_policies, unused_rollout)
+            target_values_a = self.pad_target(target_values, unused_rollout)
+            target_rewards_a = self.pad_target(target_rewards, unused_rollout)
+            # if unused_rollout > 0:
+            #     breakpoint()
+
+            return (
+                images_a,
+                actions_a,
+                target_values_a,
+                target_rewards_a,
+                target_policies_a,
+                actual_rollout_depth,
+            )
 
     def reanalyse(self, mcts):
         for i, obs in enumerate(self.observations[:-1]):
@@ -179,6 +200,13 @@ class ReplayBuffer:
         start_vals = np.random.choice(
             list(range(self.total_vals)), size=batch_size, p=probabilities
         )
+        images_l = []
+        actions_l = []
+        target_values_l = []
+        target_rewards_l = []
+        target_policies_l = []
+        weights_l = []
+        depths_l = []
 
         for val in start_vals:
             # Get the index of the game in the buffer (buf_ndx) and a location in the game (game_ndx)
@@ -193,6 +221,7 @@ class ReplayBuffer:
                 target_values,
                 target_rewards,
                 target_policies,
+                depth,
             ) = game.make_target(
                 game_ndx,
                 reward_depth=self.reward_depth,
@@ -205,18 +234,32 @@ class ReplayBuffer:
             else:
                 weight = 1
 
-            batch.append(
-                (
-                    images,
-                    actions,
-                    target_values,
-                    target_rewards,
-                    target_policies,
-                    weight,
-                )
-            )
+            images_l.append(images)
+            actions_l.append(actions)
+            target_values_l.append(target_values)
+            target_rewards_l.append(target_rewards)
+            target_policies_l.append(target_policies)
 
-        return batch
+            weights_l.append(weight)
+            depths_l.append(depth)
+
+        images_t = torch.tensor(np.stack(images_l), dtype=torch.float32)
+        actions_t = torch.tensor(np.stack(actions_l), dtype=torch.int64)
+        target_values_t = torch.tensor(np.stack(target_values_l), dtype=torch.float32)
+        target_policies_t = torch.tensor(
+            np.stack(target_policies_l), dtype=torch.float32
+        )
+        target_rewards_t = torch.tensor(np.stack(target_rewards_l), dtype=torch.float32)
+
+        return (
+            images_t,
+            actions_t,
+            target_values_t,
+            target_rewards_t,
+            target_policies_t,
+            weights_l,
+            depths_l,
+        )
 
     def get_ndxs(self, val):
         if val >= self.total_vals:
@@ -232,7 +275,6 @@ class ReplayBuffer:
         return len(self.buffer) - 1, val - self.game_starts_list[-1]
 
     def reanalyse(self, mcts):
-        # print("go")
         for i, game in enumerate(self.buffer):
             # Reanalyse on average every 50 games at max size
             if random() < 2 / len(self.buffer):
