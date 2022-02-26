@@ -260,7 +260,6 @@ class MCTS:
                 reward_loss = self.mu_net.reward_loss(
                     pred_reward_logits[screen_t], target_reward_sup_i[screen_t]
                 )
-                breakpoint()
                 # print(pred_policy_logits, target_policy_stepi)
                 policy_loss = self.mu_net.policy_loss(
                     pred_policy_logits[screen_t], target_policy_stepi[screen_t]

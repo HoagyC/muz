@@ -352,6 +352,8 @@ def support_to_scalar(support, epsilon=0.001):
         squeeze = True
         support.unsqueeze_(0)
 
+    assert all(abs(torch.sum(support, dim=1)) - 1 < 0.001)
+
     half_width = int((support.shape[1] - 1) / 2)
     vals = torch.Tensor(range(-half_width, half_width + 1))
 
@@ -374,8 +376,9 @@ def support_to_scalar(support, epsilon=0.001):
 def scalar_to_support(scalar: torch.Tensor, epsilon=0.001, half_width: int = 10):
     # Scaling the value function and converting to discrete support as found in
     # Appendix F if MuZero
+    print(scalar)
     squeeze = False
-    if scalar.ndim == 1:
+    if scalar.ndim == 0:
         scalar.unsqueeze_(0)
         squeeze = True
 
@@ -392,6 +395,8 @@ def scalar_to_support(scalar: torch.Tensor, epsilon=0.001, half_width: int = 10)
     support.scatter_(1, upper_ndxs.unsqueeze(1), ratio.unsqueeze(1))
     # do lower ndxs second as if lower==upper, ratio = 0, 1 - ratio = 1
     support.scatter_(1, lower_ndxs.unsqueeze(1), (1 - ratio).unsqueeze(1))
+
+    assert all(abs(torch.sum(support, dim=1) - 1) < 0.0001)
 
     if squeeze:
         support.squeeze_(0)
