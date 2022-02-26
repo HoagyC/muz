@@ -2,7 +2,7 @@ env_name: "CartPole-v1"
 obs_type: "discrete"
 
 # Training params
-learning_rate: 0.003
+learning_rate: 0.02
 learning_rate_decay: 0.9
 weight_decay: 0.0001
 root_dirichlet_alpha: 0.25
@@ -13,9 +13,9 @@ n_batches: 100
 batch_size: 30
 rollout_depth: 5
 reward_depth: 5
-buffer_size: 100
-consistency_loss: True
-consistency_weight: 0.1
+buffer_size: 1000
+consistency_loss: False
+consistency_weight: 0.5
 reanalyse: True
 grad_clip: 0 # 0 indicates no clipping
 
@@ -27,14 +27,15 @@ priority_beta: 1
 # Model params
 latent_size: 20
 support_width: 25
-n_simulations: 20
+n_simulations: 100
 
 # Setup params  
 log_dir: "runs"
 log_name: "None"
-debug: False
-render: True
+debug: True
+render: False
 print_simple: True
-max_games: 100
+max_games: 1000
+temp_time: 20
 
 max_frames: 1000

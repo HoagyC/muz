@@ -87,7 +87,7 @@ class MuZeroCartNet(nn.Module):
 
     def consistency_loss(self, x1, x2):
         assert x1.shape == x2.shape
-        return -self.cos_sim(x1.view(-1), x2.view(-1))
+        return -torch.sum(self.cos_sim(x1, x2))
 
     def init_optim(self, lr):
         params = (
@@ -154,7 +154,7 @@ class MuZeroAtariNet(nn.Module):
 
     def consistency_loss(self, x1, x2):
         assert x1.shape == x2.shape
-        return -self.cos_sim(x1.view(-1), x2.view(-1))
+        return -self.cos_sim(x1, x2)
 
     def init_optim(self, lr):
         params = (
@@ -347,18 +347,26 @@ class AtariPredictionNet(nn.Module):
 
 
 def support_to_scalar(support, epsilon=0.001):
-    half_width = int((len(support) - 1) / 2)
+    squeeze = False
+    if support.ndim == 1:
+        squeeze = True
+        support.unsqueeze_(0)
+
+    half_width = int((support.shape[1] - 1) / 2)
     vals = torch.Tensor(range(-half_width, half_width + 1))
 
     # Dot product of the two
-    out_val = torch.einsum("i,i -> ", vals, support)
+    out_val = torch.einsum("i,bi -> b", [vals, support])
 
-    sign_out = 1 if out_val >= 0 else -1
+    sign_out = torch.where(out_val >= 0, 1, -1)
 
     num = torch.sqrt(1 + 4 * epsilon * (torch.abs(out_val) + 1 + epsilon)) - 1
     res = (num / (2 * epsilon)) ** 2
 
     output = sign_out * (res - 1)
+
+    if squeeze:
+        output.squeeze_(0)
 
     return output
 
@@ -366,6 +374,10 @@ def support_to_scalar(support, epsilon=0.001):
 def scalar_to_support(scalar: torch.Tensor, epsilon=0.001, half_width: int = 10):
     # Scaling the value function and converting to discrete support as found in
     # Appendix F if MuZero
+    squeeze = False
+    if scalar.ndim == 1:
+        scalar.unsqueeze_(0)
+        squeeze = True
 
     sign_x = torch.where(scalar >= 0, 1, -1)
     h_x = sign_x * (torch.sqrt(torch.abs(scalar) + 1) - 1 + epsilon * scalar)
@@ -380,5 +392,8 @@ def scalar_to_support(scalar: torch.Tensor, epsilon=0.001, half_width: int = 10)
     support.scatter_(1, upper_ndxs.unsqueeze(1), ratio.unsqueeze(1))
     # do lower ndxs second as if lower==upper, ratio = 0, 1 - ratio = 1
     support.scatter_(1, lower_ndxs.unsqueeze(1), (1 - ratio).unsqueeze(1))
+
+    if squeeze:
+        support.squeeze_(0)
 
     return support

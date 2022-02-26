@@ -25,7 +25,7 @@ def run(config):
 
     net_type_dict = {
         "CartPole-v1": MuZeroCartNet,
-        "Breakout-v0": MuZeroAtariNet,
+        "BreakoutNoFrameskip-v4": MuZeroAtariNet,
         "Freeway-v0": MuZeroAtariNet,
     }
 
@@ -37,6 +37,8 @@ def run(config):
 
     if config["log_name"] == "None":
         config["log_name"] = datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
+    else:
+        muzero_network
 
     log_dir = os.path.join(config["log_dir"], config["log_name"])
     tb_writer = SummaryWriter(log_dir=log_dir)
@@ -68,8 +70,10 @@ def run(config):
             init_frame=frame,
             discount=config["discount"],
         )
-
-        temperature = 20 / (total_games + 20)
+        if config["temp_time"] > 0:
+            temperature = config["temp_time"] / (total_games + config["temp_time"])
+        else:
+            temperature = 0
         score = 0
 
         if total_games % 10 == 0 and total_games > 0:

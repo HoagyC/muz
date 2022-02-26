@@ -209,7 +209,7 @@ class MCTS:
                 init_images = torch.einsum("bhwc->bchw", init_images)
 
             latents = self.mu_net.represent(init_images)
-
+            val_diff = 0
             for i in range(self.config["rollout_depth"]):
                 # We must do tthis sequentially, as the input to the dynamics function requires the output
                 # from the previous dynamics function
@@ -260,6 +260,7 @@ class MCTS:
                 reward_loss = self.mu_net.reward_loss(
                     pred_reward_logits[screen_t], target_reward_sup_i[screen_t]
                 )
+                breakpoint()
                 # print(pred_policy_logits, target_policy_stepi)
                 policy_loss = self.mu_net.policy_loss(
                     pred_policy_logits[screen_t], target_policy_stepi[screen_t]
@@ -286,7 +287,7 @@ class MCTS:
                 + batch_reward_loss
                 + (batch_value_loss * self.val_weight)
                 + (batch_consistency_loss * self.consistency_weight)
-            )
+            ) / self.config["batch_size"]
 
             if self.config["priority_replay"]:
                 average_weight = batch_weight / len(batch)
