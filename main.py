@@ -103,7 +103,7 @@ def run(config):
 
             # print("Root value std: ", np.std(np.array(vals)))
 
-            game_record.add_priorities()
+            game_record.add_priorities(n_steps=config["reward_depth"])
             if config["reanalyse"]:
                 memory.reanalyse(mcts)
             memory.save_game(game_record)

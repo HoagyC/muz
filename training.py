@@ -42,9 +42,7 @@ class GameRecord:
         self.search_stats.append([c.num_visits if c else 0 for c in root.children])
         self.values.append(root.average_val)
 
-    def add_priorities(self, n_steps=5):
-        assert len(self.priorities) == 0
-
+    def add_priorities(self, n_steps=5, reanalysing=False):
         for i, r in enumerate(self.values):
             if i + n_steps < len(self.values):
                 value_target = self.values[i + n_steps]
@@ -57,7 +55,10 @@ class GameRecord:
                     break
 
             priority = (r - value_target) ** 2
-            self.priorities[i] = priority
+            if reanalysing:
+                self.priorities[i] = priority
+            else:
+                self.priorities.append(priority)
 
     def pad_target(self, target_l, pad_len):
         target_a = np.array(target_l)
@@ -143,7 +144,7 @@ class GameRecord:
         for i, obs in enumerate(self.observations[:-1]):
             new_root = mcts.search(self.config["n_simulations"], obs)
             self.values[i] = new_root.average_val
-            self.add_priorities()
+            self.add_priorities(n_steps=mcts.config["reward_depth"], reanalysing=True)
 
         return self
 
