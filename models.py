@@ -154,7 +154,8 @@ class MuZeroAtariNet(nn.Module):
 
     def consistency_loss(self, x1, x2):
         assert x1.shape == x2.shape
-        return -self.cos_sim(x1, x2)
+        batch_l = x1.shape[0]
+        return -torch.sum(self.cos_sim(x1.view(batch_l, -1), x2.view(batch_l, -1)))
 
     def init_optim(self, lr):
         params = (

@@ -124,6 +124,10 @@ if __name__ == "__main__":
         except:
             raise ValueError(f"No config file for game '{sys.argv[1]}'")
     else:
-        config = yaml.safe_load(open("config-breakout.yaml", "r"))
+        print("Specify game name")
+
+    if sys.argv[2] == "colab":
+        config["render"] = False
+        config["debug"] = False
 
     run(config)

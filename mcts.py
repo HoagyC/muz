@@ -264,8 +264,6 @@ class MCTS:
                         torch.softmax(pred_value_logits[screen_t], dim=1)
                     )
                 )
-                if max(target_reward_stepi) > ((1 / self.config["discount"]) + 20):
-                    breakpoint()
 
                 reward_loss = self.mu_net.reward_loss(
                     pred_reward_logits[screen_t], target_reward_sup_i[screen_t]
