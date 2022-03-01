@@ -57,7 +57,7 @@ class GameRecord:
                     break
 
             priority = (r - value_target) ** 2
-            self.priorities.append(priority)
+            self.priorities[i] = priority
 
     def pad_target(self, target_l, pad_len):
         target_a = np.array(target_l)
@@ -143,6 +143,7 @@ class GameRecord:
         for i, obs in enumerate(self.observations[:-1]):
             new_root = mcts.search(self.config["n_simulations"], obs)
             self.values[i] = new_root.average_val
+            self.add_priorities()
 
         return self
 
@@ -248,14 +249,15 @@ class ReplayBuffer:
             np.stack(target_policies_l), dtype=torch.float32
         )
         target_rewards_t = torch.tensor(np.stack(target_rewards_l), dtype=torch.float32)
-
+        weights_t = torch.tensor(weights_l)
+        weights_t = weights_t / max(weights_t)
         return (
             images_t,
             actions_t,
             target_values_t,
             target_rewards_t,
             target_policies_t,
-            weights_l,
+            weights_t,
             depths_l,
         )
 

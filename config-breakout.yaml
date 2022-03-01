@@ -16,7 +16,7 @@ reward_depth: 5
 buffer_size: 100
 consistency_loss: True
 consistency_weight: 2
-reanalyse: False
+reanalyse: True
 grad_clip: 10
 
 # Replay params

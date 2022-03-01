@@ -2,7 +2,7 @@ env_name: "CartPole-v1"
 obs_type: "discrete"
 
 # Training params
-learning_rate: 0.02
+learning_rate: 0.05
 learning_rate_decay: 0.9
 weight_decay: 0.0001
 root_dirichlet_alpha: 0.25
@@ -20,7 +20,7 @@ reanalyse: True
 grad_clip: 0 # 0 indicates no clipping
 
 # Replay params
-priority_replay: False
+priority_replay: True
 priority_alpha: 1
 priority_beta: 1
 
@@ -33,7 +33,7 @@ n_simulations: 40
 log_dir: "runs"
 log_name: "None"
 debug: False
-render: False
+render: True
 print_simple: True
 max_games: 1000
 temp_time: 20

@@ -59,7 +59,7 @@ class MCTS:
         as a scalar
         """
         self.load_model()
-
+        self.mu_net.eval()
         with torch.no_grad():
 
             frame_t = torch.tensor(current_frame)
@@ -166,7 +166,9 @@ class MCTS:
             total_value_loss,
             total_consistency_loss,
         ) = (0, 0, 0, 0, 0)
+
         val_diff = 0
+        self.mu_net.train()
 
         for _ in range(n_batches):
             (
@@ -186,9 +188,6 @@ class MCTS:
                 depths,
             ) = buffer.get_batch(batch_size=self.batch_size)
 
-            if self.config["priority_replay"]:
-                batch_weight = 0
-
             assert (
                 len(actions)
                 == len(target_policies)
@@ -197,9 +196,6 @@ class MCTS:
                 == len(images)
             )
             assert self.config["rollout_depth"] == actions.shape[1]
-
-            if self.config["priority_replay"]:
-                batch_weight += weight
 
             # This is how far we will deny the use of the representation function,
             # requiring the dynamics function to learn to represent the s, a -> s function
@@ -271,6 +267,7 @@ class MCTS:
                 policy_loss = self.mu_net.policy_loss(
                     pred_policy_logits[screen_t], target_policy_stepi[screen_t]
                 )
+
                 if self.config["consistency_loss"]:
                     consistency_loss = self.mu_net.consistency_loss(
                         latents[screen_t], target_latents[screen_t]
@@ -278,11 +275,10 @@ class MCTS:
                 else:
                     consistency_loss = 0
 
-                batch_policy_loss += policy_loss
-                batch_value_loss += value_loss
-                batch_reward_loss += reward_loss
-                if self.config["consistency_loss"]:
-                    batch_consistency_loss += consistency_loss
+                batch_policy_loss += (policy_loss * weights[screen_t]).sum()
+                batch_value_loss += (value_loss * weights[screen_t]).sum()
+                batch_reward_loss += (reward_loss * weights[screen_t]).sum()
+                batch_consistency_loss += (consistency_loss * weights[screen_t]).sum()
 
                 latents = new_latents
 
@@ -303,13 +299,11 @@ class MCTS:
                 + (batch_consistency_loss * self.consistency_weight)
             ) / self.config["batch_size"]
 
-            if self.config["priority_replay"]:
-                average_weight = batch_weight / len(batch)
-                batch_loss /= average_weight
+            batch_loss = batch_loss.mean()
 
             if self.config["debug"]:
                 print(
-                    f"v {batch_value_loss}, r {batch_reward_loss}, p {batch_policy_loss}, c {consistency_loss}"
+                    f"v {batch_value_loss}, r {batch_reward_loss}, p {batch_policy_loss}, c {batch_consistency_loss}"
                 )
 
             # Zero the gradients in the computation graph and then propagate the loss back through it
@@ -336,7 +330,7 @@ class MCTS:
         }
 
         self.save_model()
-        print(f"Total val diff {val_diff}")
+        # print(f"Total val diff {val_diff}")
         return metrics_dict
 
     def backpropagate(

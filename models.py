@@ -80,14 +80,14 @@ class MuZeroCartNet(nn.Module):
         self.dyna_net = CartDyna(self.action_size, self.latent_size, self.support_width)
         self.repr_net = CartRepr(self.obs_size, self.latent_size)
 
-        self.policy_loss = nn.CrossEntropyLoss(reduction="sum")
-        self.reward_loss = nn.CrossEntropyLoss(reduction="sum")
-        self.value_loss = nn.CrossEntropyLoss(reduction="sum")
+        self.policy_loss = nn.CrossEntropyLoss(reduction="none")
+        self.reward_loss = nn.CrossEntropyLoss(reduction="none")
+        self.value_loss = nn.CrossEntropyLoss(reduction="none")
         self.cos_sim = nn.CosineSimilarity(dim=1)
 
     def consistency_loss(self, x1, x2):
         assert x1.shape == x2.shape
-        return -torch.sum(self.cos_sim(x1, x2))
+        return -self.cos_sim(x1, x2)
 
     def init_optim(self, lr):
         params = (
@@ -147,15 +147,15 @@ class MuZeroAtariNet(nn.Module):
             self.x_pad, self.y_pad, self.latent_depth
         )
 
-        self.policy_loss = nn.CrossEntropyLoss(reduction="sum")
-        self.reward_loss = nn.CrossEntropyLoss(reduction="sum")
-        self.value_loss = nn.CrossEntropyLoss(reduction="sum")
+        self.policy_loss = nn.CrossEntropyLoss(reduction="none")
+        self.reward_loss = nn.CrossEntropyLoss(reduction="none")
+        self.value_loss = nn.CrossEntropyLoss(reduction="none")
         self.cos_sim = nn.CosineSimilarity(dim=1)
 
     def consistency_loss(self, x1, x2):
         assert x1.shape == x2.shape
         batch_l = x1.shape[0]
-        return -torch.sum(self.cos_sim(x1.view(batch_l, -1), x2.view(batch_l, -1)))
+        return -self.cos_sim(x1.view(batch_l, -1), x2.view(batch_l, -1))
 
     def init_optim(self, lr):
         params = (
@@ -193,11 +193,14 @@ class ResBlock(torch.nn.Module):
         self.bn1 = torch.nn.BatchNorm2d(num_channels)
         self.conv2 = conv3x3(num_channels, num_channels)
         self.bn2 = torch.nn.BatchNorm2d(num_channels)
+        self.dropout = nn.Dropout(0.2)
 
     def forward(self, x):
-        out = self.conv1(x)
+        out = self.dropout(x)
+        out = self.conv1(out)
         out = self.bn1(out)
         out = torch.nn.functional.relu(out)
+        out = self.dropout(out)
         out = self.conv2(out)
         out = self.bn2(out)
         out += x
@@ -262,7 +265,6 @@ class AtariRepresentationNet(nn.Module):
         x = x.to(dtype=torch.float32)
         out = F.pad(x, self.pad, "constant", 0)
         out = torch.relu(self.batch_norm1(self.conv1(out)))  # outputs 48x48
-
         out = self.res1(out)
 
         out = self.conv2(out)  # outputs 24x24

@@ -12,6 +12,8 @@ from mcts import MCTS
 from models import MuZeroCartNet, MuZeroAtariNet
 from training import GameRecord, ReplayBuffer
 
+import numpy as np
+
 
 def run(config):
     env = gym.make(config["env_name"])
@@ -60,59 +62,66 @@ def run(config):
     scores = []
 
     while total_games < config["max_games"]:
-        frames = 0
-        over = False
-        frame = env.reset()
+        try:
+            frames = 0
+            over = False
+            frame = env.reset()
 
-        game_record = GameRecord(
-            config=config,
-            action_size=action_size,
-            init_frame=frame,
-            discount=config["discount"],
-        )
-        if config["temp_time"] <= 0 or total_games % 10 == 0:
-            temperature = 0
-        else:
-            temperature = config["temp_time"] / (total_games + config["temp_time"])
-        score = 0
+            game_record = GameRecord(
+                config=config,
+                action_size=action_size,
+                init_frame=frame,
+                discount=config["discount"],
+            )
+            if config["temp_time"] <= 0:
+                temperature = 0
+            else:
+                temperature = config["temp_time"] / (total_games + config["temp_time"])
+            score = 0
 
-        if total_games % 10 == 0 and total_games > 0:
-            learning_rate = learning_rate * config["learning_rate_decay"]
-            mcts.mu_net.init_optim(learning_rate)
+            if total_games % 10 == 0 and total_games > 0:
+                learning_rate = learning_rate * config["learning_rate_decay"]
+                mcts.mu_net.init_optim(learning_rate)
 
-        while not over and frames < config["max_frames"]:
-            tree = mcts.search(config["n_simulations"], frame)
-            action = tree.pick_game_action(temperature=temperature)
+            vals = []
+            while not over and frames < config["max_frames"]:
+                tree = mcts.search(config["n_simulations"], frame)
+                action = tree.pick_game_action(temperature=temperature)
 
-            if config["render"]:
-                env.render("human")
+                if config["render"]:
+                    env.render("human")
 
-            frame, reward, over, _ = env.step(action)
+                frame, reward, over, _ = env.step(action)
 
-            game_record.add_step(frame, action, reward, tree)
+                game_record.add_step(frame, action, reward, tree)
 
-            # mcts.update()
+                # mcts.update()
 
-            frames += 1
-            score += reward
+                frames += 1
+                score += reward
+                vals.append(tree.val_pred)
 
-        game_record.add_priorities()
-        if config["reanalyse"]:
-            memory.reanalyse(mcts)
-        memory.save_game(game_record)
-        metrics_dict = mcts.train(memory, config["n_batches"])
+            # print("Root value std: ", np.std(np.array(vals)))
 
-        for key, val in metrics_dict.items():
-            tb_writer.add_scalar(key, val, total_games)
+            game_record.add_priorities()
+            if config["reanalyse"]:
+                memory.reanalyse(mcts)
+            memory.save_game(game_record)
+            metrics_dict = mcts.train(memory, config["n_batches"])
 
-        tb_writer.add_scalar("Score", score, total_games)
+            for key, val in metrics_dict.items():
+                tb_writer.add_scalar(key, val, total_games)
 
-        print(
-            f"Completed game {total_games + 1:4} with score {score:6}. Loss was {metrics_dict['Loss/total'].item():5.2f}."
-        )
-        scores.append(score)
-        total_games += 1
+            tb_writer.add_scalar("Score", score, total_games)
 
+            print(
+                f"Completed game {total_games + 1:4} with score {score:6}. Loss was {metrics_dict['Loss/total'].item():5.2f}."
+            )
+            scores.append(score)
+            total_games += 1
+
+        except KeyboardInterrupt:
+            breakpoint()
     env.close()
     return scores
 
@@ -126,7 +135,7 @@ if __name__ == "__main__":
     else:
         print("Specify game name")
 
-    if sys.argv[2] == "colab":
+    if len(sys.argv) > 2 and sys.argv[2] == "colab":
         config["render"] = False
         config["debug"] = False
 
