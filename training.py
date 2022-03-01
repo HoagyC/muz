@@ -9,7 +9,14 @@ import ray
 
 class GameRecord:
     # This class stores the relevant history of a single game
-    def __init__(self, config, action_size: int, init_frame, discount: float = 0.8):
+    def __init__(
+        self,
+        config,
+        action_size: int,
+        init_frame,
+        discount: float = 0.8,
+        last_analysed=0,
+    ):
         self.config = config
         self.action_size = action_size  # Number of available actions
         self.discount = discount  # Discount rate to be applied to future rewards
@@ -26,6 +33,7 @@ class GameRecord:
         self.values = []
 
         self.priorities = []
+        self.last_analysed = last_analysed
 
     def add_step(self, obs: np.ndarray, action: int, reward: int, root):
         # Root is a TreeNode object at the root of the search tree for the given state
@@ -140,12 +148,13 @@ class GameRecord:
                 actual_rollout_depth,
             )
 
-    def reanalyse(self, mcts):
+    def reanalyse(self, mcts, current_game):
         for i, obs in enumerate(self.observations[:-1]):
             new_root = mcts.search(self.config["n_simulations"], obs)
             self.values[i] = new_root.average_val
             self.add_priorities(n_steps=mcts.config["reward_depth"], reanalysing=True)
 
+        self.last_analysed = current_game
         return self
 
 
@@ -275,12 +284,13 @@ class ReplayBuffer:
                 return i - 1, val - self.game_starts_list[i - 1]
         return len(self.buffer) - 1, val - self.game_starts_list[-1]
 
-    def reanalyse(self, mcts):
-        for i, game in enumerate(self.buffer):
-            # Reanalyse on average every 50 games at max size
-            if random() < 2 / len(self.buffer):
-                new_game = game.reanalyse(mcts)
-                self.buffer[i] = new_game
+    def reanalyse(self, mcts, current_game):
+        p = np.array([current_game - x.last_analysed for x in self.buffer]).astype(
+            np.float32
+        )
+        p /= sum(p)
+        i = np.random.choice(range(len(self.buffer)), p=p)
+        self.buffer[i].reanalyse(mcts, current_game)
 
 
 @ray.remote

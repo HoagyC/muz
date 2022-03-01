@@ -1,10 +1,11 @@
 env_name: "BreakoutNoFrameskip-v4"
 obs_type: "image"
+seed: 0 
 
 # Training params
 learning_rate: 0.02
 learning_rate_decay: 0.9
-weight_decay: 0.1
+weight_decay: 0.0001
 root_dirichlet_alpha: 0.25
 explore_frac: 0.25
 val_weight: 0.25
@@ -15,9 +16,9 @@ rollout_depth: 5
 reward_depth: 5
 buffer_size: 100
 consistency_loss: True
-consistency_weight: 2
+consistency_weight: 0.5
 reanalyse: True
-grad_clip: 10
+grad_clip: 1
 
 # Replay params
 priority_replay: False

@@ -72,6 +72,7 @@ def run(config):
                 action_size=action_size,
                 init_frame=frame,
                 discount=config["discount"],
+                last_analysed=total_games,
             )
             if config["temp_time"] <= 0:
                 temperature = 0
@@ -104,8 +105,8 @@ def run(config):
             # print("Root value std: ", np.std(np.array(vals)))
 
             game_record.add_priorities(n_steps=config["reward_depth"])
-            if config["reanalyse"]:
-                memory.reanalyse(mcts)
+            if total_games > 1 and config["reanalyse"]:
+                memory.reanalyse(mcts, current_game=total_games)
             memory.save_game(game_record)
             metrics_dict = mcts.train(memory, config["n_batches"])
 
