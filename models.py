@@ -346,7 +346,7 @@ class AtariPredictionNet(nn.Module):
         return policy_logits, value_logits
 
 
-def support_to_scalar(support, epsilon=0.001):
+def support_to_scalar(support, epsilon=0.00001):
     squeeze = False
     if support.ndim == 1:
         squeeze = True
@@ -373,10 +373,9 @@ def support_to_scalar(support, epsilon=0.001):
     return output
 
 
-def scalar_to_support(scalar: torch.Tensor, epsilon=0.001, half_width: int = 10):
+def scalar_to_support(scalar: torch.Tensor, epsilon=0.00001, half_width: int = 10):
     # Scaling the value function and converting to discrete support as found in
     # Appendix F if MuZero
-    print(scalar)
     squeeze = False
     if scalar.ndim == 0:
         scalar.unsqueeze_(0)

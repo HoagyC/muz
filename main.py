@@ -70,10 +70,10 @@ def run(config):
             init_frame=frame,
             discount=config["discount"],
         )
-        if config["temp_time"] > 0:
-            temperature = config["temp_time"] / (total_games + config["temp_time"])
-        else:
+        if config["temp_time"] <= 0 or total_games % 10 == 0:
             temperature = 0
+        else:
+            temperature = config["temp_time"] / (total_games + config["temp_time"])
         score = 0
 
         if total_games % 10 == 0 and total_games > 0:
@@ -107,8 +107,6 @@ def run(config):
 
         tb_writer.add_scalar("Score", score, total_games)
 
-        # print(mcts.mu_net.dyna_net.fc1.weight.data)
-        # print(mcts.mu_net.dyna_net.fc1.weight.grad)
         print(
             f"Completed game {total_games + 1:4} with score {score:6}. Loss was {metrics_dict['Loss/total'].item():5.2f}."
         )

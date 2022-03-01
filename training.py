@@ -129,8 +129,6 @@ class GameRecord:
             target_policies_a = self.pad_target(target_policies, unused_rollout)
             target_values_a = self.pad_target(target_values, unused_rollout)
             target_rewards_a = self.pad_target(target_rewards, unused_rollout)
-            # if unused_rollout > 0:
-            #     breakpoint()
 
             return (
                 images_a,

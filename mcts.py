@@ -166,6 +166,7 @@ class MCTS:
             total_value_loss,
             total_consistency_loss,
         ) = (0, 0, 0, 0, 0)
+        val_diff = 0
 
         for _ in range(n_batches):
             (
@@ -209,7 +210,6 @@ class MCTS:
                 init_images = torch.einsum("bhwc->bchw", init_images)
 
             latents = self.mu_net.represent(init_images)
-            val_diff = 0
             for i in range(self.config["rollout_depth"]):
                 # We must do tthis sequentially, as the input to the dynamics function requires the output
                 # from the previous dynamics function
@@ -257,14 +257,22 @@ class MCTS:
                 value_loss = self.mu_net.value_loss(
                     pred_value_logits[screen_t], target_value_sup_i[screen_t]
                 )
+
+                val_diff += sum(
+                    target_value_stepi[screen_t]
+                    - support_to_scalar(
+                        torch.softmax(pred_value_logits[screen_t], dim=1)
+                    )
+                )
+                if max(target_reward_stepi) > ((1 / self.config["discount"]) + 20):
+                    breakpoint()
+
                 reward_loss = self.mu_net.reward_loss(
                     pred_reward_logits[screen_t], target_reward_sup_i[screen_t]
                 )
-                # print(pred_policy_logits, target_policy_stepi)
                 policy_loss = self.mu_net.policy_loss(
                     pred_policy_logits[screen_t], target_policy_stepi[screen_t]
                 )
-                # print(policy_loss)
                 if self.config["consistency_loss"]:
                     consistency_loss = self.mu_net.consistency_loss(
                         latents[screen_t], target_latents[screen_t]
@@ -280,6 +288,15 @@ class MCTS:
 
                 latents = new_latents
 
+                # print(
+                #     target_value_stepi,
+                #     pred_value_logits[screen_t],
+                #     torch.softmax(pred_value_logits[screen_t], dim=1),
+                #     support_to_scalar(
+                #         torch.softmax(pred_value_logits[screen_t], dim=1)
+                #     ),
+                #     target_value_sup_i,
+                # )
             # Aggregate the losses to a single measure
             batch_loss = (
                 batch_policy_loss
@@ -296,9 +313,6 @@ class MCTS:
                 print(
                     f"v {batch_value_loss}, r {batch_reward_loss}, p {batch_policy_loss}, c {consistency_loss}"
                 )
-                # print(
-                #     f"v {pred_value_logits}, r {pred_reward_logits}, p {pred_policy_logits}"
-                # )
 
             # Zero the gradients in the computation graph and then propagate the loss back through it
             self.mu_net.optimizer.zero_grad()
@@ -324,7 +338,7 @@ class MCTS:
         }
 
         self.save_model()
-
+        print(f"Total val diff {val_diff}")
         return metrics_dict
 
     def backpropagate(
@@ -411,7 +425,7 @@ class TreeNode:
         """Updates the average value of a node when a new value is receivied
         copies the formula of the muzero paper rather than the neater form of just tracking the sum and dividng as needed
         """
-        nmtr = self.average_val * self.num_visits + (curr_val + self.val_pred)
+        nmtr = self.average_val * self.num_visits + curr_val
         dnmtr = self.num_visits + 1
         self.average_val = nmtr / dnmtr
 
