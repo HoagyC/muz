@@ -29,16 +29,6 @@ class MCTS:
         # and has an optimizer which updates the parameters for all three simultaneously
         self.mu_net = mu_net
 
-        # weighting of the value loss relative to policy and reward - paper recommends 0.25
-        self.val_weight = config["val_weight"]
-        self.consistency_weight = config["consistency_weight"]
-        self.discount = config["discount"]
-        self.batch_size = config["batch_size"]
-        self.debug = config["debug"]
-
-        self.root_dirichlet_alpha = config["root_dirichlet_alpha"]
-        self.explore_frac = config["explore_frac"]
-
         # keeps track of the highest and lowest values found
         self.minmax = MinMax()
 
@@ -75,7 +65,9 @@ class MCTS:
             init_val = support_to_scalar(torch.softmax(init_val, 0))
 
             init_policy_probs = add_dirichlet(
-                init_policy_probs, self.root_dirichlet_alpha, self.explore_frac
+                init_policy_probs,
+                self.config["root_dirichlet_alpha"],
+                self.config["explore_frac"],
             )
 
             # initialize the search tree with a root node
@@ -84,9 +76,8 @@ class MCTS:
                 action_size=self.action_size,
                 val_pred=init_val,
                 pol_pred=init_policy_probs,
-                discount=self.discount,
                 minmax=self.minmax,
-                debug=self.debug,
+                config=self.config,
                 num_visits=0,
             )
 
@@ -135,7 +126,7 @@ class MCTS:
                             pol_pred=policy_probs,
                             reward=reward,
                             minmax=self.minmax,
-                            debug=self.debug,
+                            config=self.config,
                         )
 
                         # We have reached a new node and therefore this is the end of the simulation
@@ -186,7 +177,7 @@ class MCTS:
                 target_policies,
                 weights,
                 depths,
-            ) = buffer.get_batch(batch_size=self.batch_size)
+            ) = buffer.get_batch(batch_size=self.config["batch_size"])
 
             assert (
                 len(actions)
@@ -295,8 +286,8 @@ class MCTS:
             batch_loss = (
                 batch_policy_loss
                 + batch_reward_loss
-                + (batch_value_loss * self.val_weight)
-                + (batch_consistency_loss * self.consistency_weight)
+                + (batch_value_loss * self.config["val_weight"])
+                + (batch_consistency_loss * self.config["consistency_weight"])
             ) / self.config["batch_size"]
 
             batch_loss = batch_loss.mean()
@@ -325,8 +316,10 @@ class MCTS:
             "Loss/total": total_loss,
             "Loss/policy": total_policy_loss,
             "Loss/reward": total_reward_loss,
-            "Loss/value": (total_value_loss * self.val_weight),
-            "Loss/consistency": (total_consistency_loss * self.consistency_weight),
+            "Loss/value": (total_value_loss * self.config["val_weight"]),
+            "Loss/consistency": (
+                total_consistency_loss * self.config["consistency_weight"]
+            ),
         }
 
         self.save_model()
@@ -343,7 +336,7 @@ class MCTS:
         for node in search_list[::-1]:
             node.num_visits += 1
             node.update_val(value)
-            value = node.reward + (value * self.discount)
+            value = node.reward + (value * self.config["discount"])
             self.minmax.update(value)
 
     def save_model(self):
@@ -371,9 +364,8 @@ class TreeNode:
         pol_pred=None,
         parent=None,
         reward=0,
-        discount=1,
         minmax=None,
-        debug=False,
+        config=None,
         num_visits=1,
     ):
 
@@ -387,12 +379,10 @@ class TreeNode:
         self.num_visits = num_visits
         self.reward = reward
 
-        self.discount = discount
         self.minmax = minmax
+        self.config = config
 
-        self.debug = debug
-
-    def insert(self, action_n, latent, val_pred, pol_pred, reward, minmax, debug):
+    def insert(self, action_n, latent, val_pred, pol_pred, reward, minmax, config):
         # The implementation here differs from the open MuZero (werner duvaud)
         # by only initializing tree nodes when they are chosen, rather than when their parent is chosen
         if self.children[action_n] is None:
@@ -403,9 +393,8 @@ class TreeNode:
                 action_size=self.action_size,
                 parent=self,
                 reward=reward,
-                discount=self.discount,
                 minmax=minmax,
-                debug=debug,
+                config=self.config,
             )
 
             self.children[action_n] = new_child
@@ -491,7 +480,7 @@ class TreeNode:
             action = np.random.choice(self.action_size, p=adjusted_scores)
 
         # Prints a lot of useful information for how the algorithm is making decisions
-        if self.debug:
+        if self.config["debug"]:
             val_preds = [c.val_pred if c else 0 for c in self.children]
             print(
                 visit_counts,

@@ -5,14 +5,14 @@ import time
 import yaml
 
 import gym
+import numpy as np
+import ray
 
 from torch.utils.tensorboard import SummaryWriter
 
 from mcts import MCTS
 from models import MuZeroCartNet, MuZeroAtariNet
 from training import GameRecord, ReplayBuffer
-
-import numpy as np
 
 
 def run(config):
