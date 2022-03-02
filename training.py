@@ -45,10 +45,10 @@ class GameRecord:
 
         self.observations.append(obs)
         self.actions.append(action)
-        self.rewards.append(reward)
+        self.rewards.append(float(reward))
 
         self.search_stats.append([c.num_visits if c else 0 for c in root.children])
-        self.values.append(root.average_val)
+        self.values.append(float(root.average_val))
 
     def add_priorities(self, n_steps=5, reanalysing=False):
         for i, r in enumerate(self.values):

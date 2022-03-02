@@ -102,7 +102,8 @@ class MCTS:
                     if current_node.children[action] is None:
                         # Convert to a 2D tensor one-hot encoding the action
                         action_t = nn.functional.one_hot(
-                            torch.tensor([action]), num_classes=self.action_size
+                            torch.tensor([action], device=device),
+                            num_classes=self.action_size,
                         )
 
                         # apply the dynamics function to get a representation of the state after the action, and the reward gained
@@ -531,7 +532,9 @@ class MinMax:
 
 
 def add_dirichlet(prior, dirichlet_alpha, explore_frac):
-    noise = np.random.dirichlet([dirichlet_alpha] * len(prior))
+    noise = torch.tensor(
+        np.random.dirichlet([dirichlet_alpha] * len(prior)), device=device.prior
+    )
     new_prior = (1 - explore_frac) * prior + explore_frac * noise
     return new_prior
 

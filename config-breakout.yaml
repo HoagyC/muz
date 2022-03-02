@@ -10,7 +10,7 @@ root_dirichlet_alpha: 0.25
 explore_frac: 0.25
 val_weight: 0.25
 discount: 0.997
-n_batches: 100
+n_batches: 10
 batch_size: 10
 rollout_depth: 5
 reward_depth: 5

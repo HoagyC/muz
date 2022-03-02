@@ -104,9 +104,7 @@ def run(config):
 
                 frames += 1
                 score += reward
-                vals.append(tree.val_pred)
-
-            # print("Root value std: ", np.std(np.array(vals)))
+                vals.append(float(tree.val_pred))
 
             game_record.add_priorities(n_steps=config["reward_depth"])
             if total_games > 1 and config["reanalyse"]:
@@ -120,7 +118,9 @@ def run(config):
             tb_writer.add_scalar("Score", score, total_games)
 
             print(
-                f"Completed game {total_games + 1:4} with score {score:6}. Loss was {metrics_dict['Loss/total'].item():5.2f}."
+                f"Completed game {total_games + 1:4} with score {score:6}. "
+                + f"Loss was {metrics_dict['Loss/total'].item():5.2f}. "
+                + f"Value mean, std: {np.mean(np.array(vals)):2.2f}, {np.std(np.array(vals)):2.2f}"
             )
             scores.append(score)
             total_games += 1
