@@ -8,6 +8,7 @@ import gym
 import numpy as np
 import ray
 
+import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from mcts import MCTS
@@ -60,6 +61,9 @@ def run(config):
 
     total_games = 0
     scores = []
+
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print(f"Training on device: {device}")
 
     while total_games < config["max_games"]:
         try:

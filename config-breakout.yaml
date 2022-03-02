@@ -3,7 +3,7 @@ obs_type: "image"
 seed: 0 
 
 # Training params
-learning_rate: 0.02
+learning_rate: 0.003
 learning_rate_decay: 0.9
 weight_decay: 0.0001
 root_dirichlet_alpha: 0.25
@@ -34,7 +34,7 @@ n_simulations: 20
 log_dir: "runs"
 log_name: "None"
 debug: True
-render: True
+render: False
 print_simple: True
 max_games: 400
 temp_time: 50

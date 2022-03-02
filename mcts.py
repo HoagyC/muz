@@ -139,7 +139,7 @@ class MCTS:
                 self.backpropagate(search_list, new_val)
         return root_node
 
-    def train(self, buffer: ReplayBuffer, n_batches: int):
+    def train(self, buffer: ReplayBuffer, n_batches: int, device=torch.device("cpu")):
         """
         The train function simultaneously trains the prediction, dynamics and representation functions
         each batch has a series of values, rewards and policies, that must be predicted only
@@ -149,7 +149,6 @@ class MCTS:
         is trained - is it akin to training through a recurrent neural network with the prediction function
         as a head
         """
-
         (
             total_loss,
             total_policy_loss,
@@ -177,7 +176,7 @@ class MCTS:
                 target_policies,
                 weights,
                 depths,
-            ) = buffer.get_batch(batch_size=self.config["batch_size"])
+            ) = buffer.get_batch(batch_size=self.config["batch_size"], device=device)
 
             assert (
                 len(actions)
