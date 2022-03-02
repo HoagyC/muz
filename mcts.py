@@ -32,7 +32,7 @@ class MCTS:
         # keeps track of the highest and lowest values found
         self.minmax = MinMax()
 
-    def search(self, n_simulations, current_frame, device=torch.device("cpu"):
+    def search(self, n_simulations, current_frame, device=torch.device("cpu")):
         """
         This function takes a frame and creates a tree of possible actions that could
         be taken from the frame, assessing the expected value at each location
@@ -51,10 +51,10 @@ class MCTS:
         self.load_model()
         self.mu_net.eval()
         self.mu_net = self.mu_net.to(device)
-        
+
         with torch.no_grad():
 
-            frame_t = torch.tensor(current_frame)
+            frame_t = torch.tensor(current_frame, device=device)
             if self.config["obs_type"] == "image":
                 frame_t = torch.einsum("hwc->chw", [frame_t])
             init_latent = self.mu_net.represent(frame_t.unsqueeze(0))[0]
@@ -218,7 +218,7 @@ class MCTS:
                 one_hot_actions = nn.functional.one_hot(
                     actions[:, i],
                     num_classes=self.action_size,
-                )
+                ).to(device=device)
 
                 pred_policy_logits, pred_value_logits = self.mu_net.predict(latents)
 

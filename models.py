@@ -155,7 +155,7 @@ class MuZeroAtariNet(nn.Module):
     def consistency_loss(self, x1, x2):
         assert x1.shape == x2.shape
         batch_l = x1.shape[0]
-        return -self.cos_sim(x1.view(batch_l, -1), x2.view(batch_l, -1))
+        return -self.cos_sim(x1.reshape(batch_l, -1), x2.reshape(batch_l, -1))
 
     def init_optim(self, lr):
         params = (
@@ -314,7 +314,7 @@ class AtariDynamicsNet(nn.Module):
         out = self.conv1(res_input)
         new_latent = self.res1(out)
 
-        out = new_latent.view(batch_size, -1)
+        out = new_latent.reshape(batch_size, -1)
         reward_logits = self.fc2(torch.relu(self.fc1(out)))
 
         return new_latent, reward_logits
@@ -341,7 +341,7 @@ class AtariPredictionNet(nn.Module):
 
     def forward(self, x):
         batch_size = x.shape[0]
-        out = x.view(batch_size, -1)
+        out = x.reshape(batch_size, -1)
 
         out = torch.relu(self.fc1(out))
         policy_logits = self.fc_policy(out)
