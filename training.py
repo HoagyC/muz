@@ -62,7 +62,7 @@ class GameRecord:
                 else:
                     break
 
-            priority = (r - value_target) ** 2
+            priority = abs(r - value_target)
             if reanalysing:
                 self.priorities[i] = priority
             else:
