@@ -263,7 +263,7 @@ class ReplayBuffer:
         target_rewards_t = torch.tensor(
             np.stack(target_rewards_l), dtype=torch.float32, device=device
         )
-        weights_t = torch.tensor(weights_l)
+        weights_t = torch.tensor(weights_l, device=device)
         weights_t = weights_t / max(weights_t)
         return (
             images_t,

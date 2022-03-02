@@ -358,7 +358,9 @@ def support_to_scalar(support, epsilon=0.00001):
     assert all(abs(torch.sum(support, dim=1)) - 1 < 0.001)
 
     half_width = int((support.shape[1] - 1) / 2)
-    vals = torch.Tensor(range(-half_width, half_width + 1))
+    vals = torch.Tensor(
+        range(-half_width, half_width + 1), dtype=support.dtype, device=support.device
+    )
 
     # Dot product of the two
     out_val = torch.einsum("i,bi -> b", [vals, support])
@@ -392,7 +394,7 @@ def scalar_to_support(scalar: torch.Tensor, epsilon=0.00001, half_width: int = 1
     upper_ndxs = (torch.ceil(h_x) + half_width).to(dtype=torch.int64)
     lower_ndxs = (torch.floor(h_x) + half_width).to(dtype=torch.int64)
     ratio = h_x % 1
-    support = torch.zeros(*scalar.shape, 2 * half_width + 1)
+    support = torch.zeros(*scalar.shape, 2 * half_width + 1, device=scalar.device)
 
     support.scatter_(1, upper_ndxs.unsqueeze(1), ratio.unsqueeze(1))
     # do lower ndxs second as if lower==upper, ratio = 0, 1 - ratio = 1
