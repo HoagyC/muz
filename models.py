@@ -246,20 +246,20 @@ class AtariRepresentationNet(nn.Module):
 
         self.pad = (0, x_pad, 0, y_pad)
 
-        self.conv1 = nn.Conv2d(3, 64, stride=2, kernel_size=3, padding=1)
-        self.batch_norm1 = nn.BatchNorm2d(num_features=64, momentum=0.1)
+        self.conv1 = nn.Conv2d(3, 12, stride=2, kernel_size=3, padding=1)
+        self.batch_norm1 = nn.BatchNorm2d(num_features=12, momentum=0.1)
 
-        self.res1 = ResBlock(64)
+        self.res1 = ResBlock(12)
 
-        self.conv2 = nn.Conv2d(64, 32, stride=2, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(12, 12, stride=2, kernel_size=3, padding=1)
 
-        self.res2 = ResBlock(32)
+        self.res2 = ResBlock(12)
         self.av_pool1 = nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
-        self.res3 = ResBlock(32)
+        self.res3 = ResBlock(12)
         self.av_pool2 = nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
-        self.res4 = ResBlock(32)
+        self.res4 = ResBlock(12)
 
-        self.conv3 = nn.Conv2d(32, latent_depth, stride=1, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(12, latent_depth, stride=1, kernel_size=3, padding=1)
 
     def forward(self, x):  # inputs are 96x96??
         x = x.to(dtype=torch.float32)

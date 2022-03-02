@@ -173,8 +173,6 @@ class MCTS:
                 batch_value_loss,
                 batch_consistency_loss,
             ) = (0, 0, 0, 0)
-
-            st_t = time.time()
             (
                 images,
                 actions,
@@ -184,8 +182,6 @@ class MCTS:
                 weights,
                 depths,
             ) = buffer.get_batch(batch_size=self.config["batch_size"], device=device)
-            print(f"Batch make time: {time.time() - st_t}")
-            st_t = time.time()
 
             assert (
                 len(actions)
@@ -206,6 +202,10 @@ class MCTS:
 
             latents = self.mu_net.represent(init_images)
             for i in range(self.config["rollout_depth"]):
+                screen_t = torch.tensor(depths) > i
+                if torch.sum(screen_t) < 1:
+                    continue
+
                 # We must do tthis sequentially, as the input to the dynamics function requires the output
                 # from the previous dynamics function
 
@@ -242,8 +242,6 @@ class MCTS:
                 target_value_sup_i = scalar_to_support(
                     target_value_stepi, half_width=self.config["support_width"]
                 )
-
-                screen_t = torch.tensor(depths) > i
 
                 # Cutting off cases where there's not enough data for a full rollout
 
@@ -319,7 +317,6 @@ class MCTS:
             total_policy_loss += batch_policy_loss
             total_reward_loss += batch_reward_loss
             total_consistency_loss += batch_consistency_loss
-            print(f"Batch process time: {time.time() - st_t}")
 
         metrics_dict = {
             "Loss/total": total_loss,
