@@ -89,6 +89,7 @@ def run(config):
                 mcts.mu_net.init_optim(learning_rate)
 
             vals = []
+            start_time = time.time()
             while not over and frames < config["max_frames"]:
                 tree = mcts.search(config["n_simulations"], frame)
                 action = tree.pick_game_action(temperature=temperature)
@@ -106,11 +107,18 @@ def run(config):
                 score += reward
                 vals.append(float(tree.val_pred))
 
+            time_per_move = (time.time() - start_time) / frames
+
             game_record.add_priorities(n_steps=config["reward_depth"])
             if total_games > 1 and config["reanalyse"]:
-                memory.reanalyse(mcts, current_game=total_games)
+                memory.reanalyse(
+                    mcts, current_game=total_games, n=config["reanalyse_n"]
+                )
             memory.save_game(game_record)
+
+            start_time = time.time()
             metrics_dict = mcts.train(memory, config["n_batches"], device=device)
+            time_per_batch = (time.time() - start_time) / config["n_batches"]
 
             for key, val in metrics_dict.items():
                 tb_writer.add_scalar(key, val, total_games)
@@ -118,9 +126,10 @@ def run(config):
             tb_writer.add_scalar("Score", score, total_games)
 
             print(
-                f"Completed game {total_games + 1:4} with score {score:6}. "
-                + f"Loss was {metrics_dict['Loss/total'].item():7.2f}. "
-                + f"Value mean, std: {np.mean(np.array(vals)):6.2f}, {np.std(np.array(vals)):6.2f}"
+                f"Game: {total_games + 1:4}. Score: {score:6}. "
+                + f"Loss: {metrics_dict['Loss/total'].item():7.2f}. "
+                + f"Value mean, std: {np.mean(np.array(vals)):6.2f}, {np.std(np.array(vals)):5.2f}. "
+                + f"s/move: {time_per_move:5.3f}. s/batch: {time_per_batch:6.3f}."
             )
             scores.append(score)
             total_games += 1

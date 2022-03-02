@@ -13,11 +13,12 @@ discount: 0.997
 n_batches: 100
 batch_size: 30
 rollout_depth: 5
-reward_depth: 5
+reward_depth: 10
 buffer_size: 50
 consistency_loss: True
 consistency_weight: 0.5
 reanalyse: True
+reanalyse_n: 1
 grad_clip: 0 # 0 indicates no clipping
 
 # Replay params

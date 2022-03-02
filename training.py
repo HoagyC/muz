@@ -288,13 +288,14 @@ class ReplayBuffer:
                 return i - 1, val - self.game_starts_list[i - 1]
         return len(self.buffer) - 1, val - self.game_starts_list[-1]
 
-    def reanalyse(self, mcts, current_game):
+    def reanalyse(self, mcts, current_game, n):
         p = np.array([current_game - x.last_analysed for x in self.buffer]).astype(
             np.float32
         )
         p /= sum(p)
-        i = np.random.choice(range(len(self.buffer)), p=p)
-        self.buffer[i].reanalyse(mcts, current_game)
+        ndxs = np.random.choice(range(len(self.buffer)), size=n, p=p)
+        for i in ndxs:
+            self.buffer[i].reanalyse(mcts, current_game)
 
 
 @ray.remote
