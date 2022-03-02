@@ -302,7 +302,9 @@ class AtariDynamicsNet(nn.Module):
 
     def forward(self, latent, actions_one_hot):
         # Receives 2D actions of batch_size x action_space_size
-        action_images = torch.ones(latent.shape[0], latent.shape[2], latent.shape[3])
+        action_images = torch.ones(
+            latent.shape[0], latent.shape[2], latent.shape[3], device=latent.device
+        )
 
         action_images_spread = torch.einsum(
             "bhw,ba->bahw", action_images, actions_one_hot
