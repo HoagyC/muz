@@ -522,8 +522,8 @@ class MinMax:
         self.min_value = float("inf")
 
     def update(self, val):
-        self.max_value = max(val, self.max_value)
-        self.min_value = min(val, self.min_value)
+        self.max_value = max(float(val), self.max_value)
+        self.min_value = min(float(val), self.min_value)
 
     def normalize(self, val):
         # places val between 0 - 1 linearly depending on where it sits between min_value and max_value
