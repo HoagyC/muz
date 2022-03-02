@@ -358,7 +358,7 @@ def support_to_scalar(support, epsilon=0.00001):
     assert all(abs(torch.sum(support, dim=1)) - 1 < 0.001)
 
     half_width = int((support.shape[1] - 1) / 2)
-    vals = torch.Tensor(
+    vals = torch.tensor(
         range(-half_width, half_width + 1), dtype=support.dtype, device=support.device
     )
 
