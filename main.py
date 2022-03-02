@@ -112,7 +112,7 @@ def run(config):
             if total_games > 1 and config["reanalyse"]:
                 memory.reanalyse(mcts, current_game=total_games)
             memory.save_game(game_record)
-            metrics_dict = mcts.train(memory, config["n_batches"])
+            metrics_dict = mcts.train(memory, config["n_batches"], device=device)
 
             for key, val in metrics_dict.items():
                 tb_writer.add_scalar(key, val, total_games)
