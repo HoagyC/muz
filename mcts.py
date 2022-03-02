@@ -1,6 +1,7 @@
 import math
 import os
 import random
+import time
 
 import numpy as np
 
@@ -173,6 +174,7 @@ class MCTS:
                 batch_consistency_loss,
             ) = (0, 0, 0, 0)
 
+            st_t = time.time()
             (
                 images,
                 actions,
@@ -182,6 +184,8 @@ class MCTS:
                 weights,
                 depths,
             ) = buffer.get_batch(batch_size=self.config["batch_size"], device=device)
+            print(f"Batch make time: {time.time() - st_t}")
+            st_t = time.time()
 
             assert (
                 len(actions)
@@ -315,6 +319,7 @@ class MCTS:
             total_policy_loss += batch_policy_loss
             total_reward_loss += batch_reward_loss
             total_consistency_loss += batch_consistency_loss
+            print(f"Batch process time: {time.time() - st_t}")
 
         metrics_dict = {
             "Loss/total": total_loss,

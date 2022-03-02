@@ -1,4 +1,4 @@
-env_name: "BreakoutNoFrameskip-v4"
+env_name: "Breakout-v0"
 obs_type: "image"
 seed: 0 
 
@@ -22,7 +22,7 @@ reanalyse_n: 1
 grad_clip: 1
 
 # Replay params
-priority_replay: False
+priority_replay: True
 priority_alpha: 1
 priority_beta: 1
 
@@ -34,10 +34,10 @@ n_simulations: 20
 # Setup params  
 log_dir: "runs"
 log_name: "None"
-debug: True
+debug: False
 render: False
 print_simple: True
 max_games: 400
 temp_time: 50
 
-max_frames: 300  
+max_frames: 3000

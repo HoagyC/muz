@@ -29,6 +29,7 @@ def run(config):
     net_type_dict = {
         "CartPole-v1": MuZeroCartNet,
         "BreakoutNoFrameskip-v4": MuZeroAtariNet,
+        "Breakout-v0": MuZeroAtariNet,
         "Freeway-v0": MuZeroAtariNet,
     }
 
