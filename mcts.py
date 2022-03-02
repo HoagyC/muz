@@ -533,7 +533,7 @@ class MinMax:
 
 def add_dirichlet(prior, dirichlet_alpha, explore_frac):
     noise = torch.tensor(
-        np.random.dirichlet([dirichlet_alpha] * len(prior)), device=device.prior
+        np.random.dirichlet([dirichlet_alpha] * len(prior)), device=prior.device
     )
     new_prior = (1 - explore_frac) * prior + explore_frac * noise
     return new_prior

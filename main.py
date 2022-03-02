@@ -119,8 +119,8 @@ def run(config):
 
             print(
                 f"Completed game {total_games + 1:4} with score {score:6}. "
-                + f"Loss was {metrics_dict['Loss/total'].item():5.2f}. "
-                + f"Value mean, std: {np.mean(np.array(vals)):2.2f}, {np.std(np.array(vals)):2.2f}"
+                + f"Loss was {metrics_dict['Loss/total'].item():7.2f}. "
+                + f"Value mean, std: {np.mean(np.array(vals)):6.2f}, {np.std(np.array(vals)):6.2f}"
             )
             scores.append(score)
             total_games += 1
