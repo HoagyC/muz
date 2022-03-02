@@ -32,7 +32,7 @@ class MCTS:
         # keeps track of the highest and lowest values found
         self.minmax = MinMax()
 
-    def search(self, n_simulations, current_frame):
+    def search(self, n_simulations, current_frame, device=torch.device("cpu"):
         """
         This function takes a frame and creates a tree of possible actions that could
         be taken from the frame, assessing the expected value at each location
@@ -50,6 +50,8 @@ class MCTS:
         """
         self.load_model()
         self.mu_net.eval()
+        self.mu_net = self.mu_net.to(device)
+        
         with torch.no_grad():
 
             frame_t = torch.tensor(current_frame)
@@ -158,7 +160,9 @@ class MCTS:
         ) = (0, 0, 0, 0, 0)
 
         val_diff = 0
+
         self.mu_net.train()
+        self.mu_net = self.mu_net.to(device)
 
         for _ in range(n_batches):
             (
