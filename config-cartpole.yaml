@@ -3,7 +3,7 @@ obs_type: "discrete"
 seed: 0
 
 # Training params
-learning_rate: 0.05
+learning_rate: 0.02
 learning_rate_decay: 0.9
 weight_decay: 0.0001
 root_dirichlet_alpha: 0.25
@@ -22,7 +22,7 @@ reanalyse_n: 1
 grad_clip: 0 # 0 indicates no clipping
 
 # Replay params
-priority_replay: True
+priority_replay: False
 priority_alpha: 1
 priority_beta: 1
 

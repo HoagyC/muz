@@ -12,7 +12,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from mcts import MCTS
-from models import MuZeroCartNet, MuZeroAtariNet
+from models import MuZeroCartNet, MuZeroAtariNet, normalize
 from training import GameRecord, ReplayBuffer
 
 
@@ -27,13 +27,11 @@ def run(config):
         obs_size = obs_size[0]
 
     net_type_dict = {
-        "CartPole-v1": MuZeroCartNet,
-        "BreakoutNoFrameskip-v4": MuZeroAtariNet,
-        "Breakout-v0": MuZeroAtariNet,
-        "Freeway-v0": MuZeroAtariNet,
+        "discrete": MuZeroCartNet,
+        "image": MuZeroAtariNet,
     }
 
-    muzero_class = net_type_dict[config["env_name"]]
+    muzero_class = net_type_dict[config["obs_type"]]
     print(muzero_class)
     muzero_network = muzero_class(action_size, obs_size, config)
     learning_rate = config["learning_rate"]
@@ -41,8 +39,6 @@ def run(config):
 
     if config["log_name"] == "None":
         config["log_name"] = datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
-    else:
-        muzero_network
 
     log_dir = os.path.join(config["log_dir"], config["log_name"])
     tb_writer = SummaryWriter(log_dir=log_dir)
@@ -101,6 +97,14 @@ def run(config):
                     env.render("human")
 
                 frame, reward, over, _ = env.step(action)
+
+                if config["env_name"] == "CartPole-v1" and frames % 20 > 0:
+                    reward = 0
+
+                if config["obs_type"] == "image":
+                    frame = normalize(frame)
+                else:
+                    frame = np.array(frame)
 
                 game_record.add_step(frame, action, reward, tree)
 

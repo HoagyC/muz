@@ -1,5 +1,7 @@
 import math
 
+import numpy as np
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -135,6 +137,7 @@ class MuZeroAtariNet(nn.Module):
         self.obs_size = obs_size
         self.latent_depth = config["latent_size"]
         self.support_width = config["support_width"]
+        self.repr_channels = config["repr_channels"]
         self.latent_area = self.x_size_final * self.y_size_final
 
         self.dyna_net = AtariDynamicsNet(
@@ -144,7 +147,7 @@ class MuZeroAtariNet(nn.Module):
             self.latent_depth, self.support_width, self.latent_area, self.action_size
         )
         self.repr_net = AtariRepresentationNet(
-            self.x_pad, self.y_pad, self.latent_depth
+            self.x_pad, self.y_pad, self.latent_depth, self.repr_channels
         )
 
         self.policy_loss = nn.CrossEntropyLoss(reduction="none")
@@ -186,12 +189,14 @@ def conv3x3(in_channels, out_channels, stride=1):
     )
 
 
-class ResBlock(torch.nn.Module):
+class ResBlockSmall(torch.nn.Module):
     def __init__(self, num_channels, stride=1):
         super().__init__()
         self.conv1 = conv3x3(num_channels, num_channels, stride)
+        nn.init.kaiming_normal_(self.conv1.weight)
         self.bn1 = torch.nn.BatchNorm2d(num_channels)
         self.conv2 = conv3x3(num_channels, num_channels)
+        nn.init.kaiming_normal_(self.conv2.weight)
         self.bn2 = torch.nn.BatchNorm2d(num_channels)
         self.dropout = nn.Dropout(0.2)
 
@@ -200,7 +205,7 @@ class ResBlock(torch.nn.Module):
         out = self.conv1(out)
         out = self.bn1(out)
         out = torch.nn.functional.relu(out)
-        out = self.dropout(out)
+        out = self.dropout(x)
         out = self.conv2(out)
         out = self.bn2(out)
         out += x
@@ -240,26 +245,72 @@ class ResBlock(torch.nn.Module):
 #         return out
 
 
-class AtariRepresentationNet(nn.Module):
-    def __init__(self, x_pad, y_pad, latent_depth):
+class AtariDereprNet(nn.Module):
+    def __init__(self, x_pad, y_pad, latent_depth, n_channels):
         super().__init__()
 
         self.pad = (0, x_pad, 0, y_pad)
 
-        self.conv1 = nn.Conv2d(3, 12, stride=2, kernel_size=3, padding=1)
-        self.batch_norm1 = nn.BatchNorm2d(num_features=12, momentum=0.1)
+        self.conv1 = nn.Conv2d(3, n_channels, stride=2, kernel_size=3, padding=1)
+        self.batch_norm1 = nn.BatchNorm2d(num_features=n_channels, momentum=0.1)
 
-        self.res1 = ResBlock(12)
+        self.res1 = ResBlockSmall(n_channels)
 
-        self.conv2 = nn.Conv2d(12, 12, stride=2, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(
+            n_channels, n_channels, stride=2, kernel_size=3, padding=1
+        )
 
-        self.res2 = ResBlock(12)
+        self.res2 = ResBlockSmall(n_channels)
         self.av_pool1 = nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
-        self.res3 = ResBlock(12)
+        self.res3 = ResBlockSmall(n_channels)
         self.av_pool2 = nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
-        self.res4 = ResBlock(12)
+        self.res4 = ResBlockSmall(n_channels)
 
-        self.conv3 = nn.Conv2d(12, latent_depth, stride=1, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(
+            n_channels, latent_depth, stride=1, kernel_size=3, padding=1
+        )
+
+    def forward(self, x):  # inputs are 96x96??
+        x = x.to(dtype=torch.float32)
+        out = F.pad(x, self.pad, "constant", 0)
+        out = torch.relu(self.batch_norm1(self.conv1(out)))  # outputs 48x48
+        out = self.res1(out)
+
+        out = self.conv2(out)  # outputs 24x24
+
+        out = self.res2(out)
+        out = self.av_pool1(out)  # outputs 12x12
+        out = self.res3(out)
+        out = self.av_pool2(out)  # outputs 6x6
+        out = self.res4(out)
+        out = self.conv3(out)
+        return out
+
+
+class AtariRepresentationNet(nn.Module):
+    def __init__(self, x_pad, y_pad, latent_depth, n_channels):
+        super().__init__()
+
+        self.pad = (0, x_pad, 0, y_pad)
+
+        self.conv1 = nn.Conv2d(3, n_channels, stride=2, kernel_size=3, padding=1)
+        self.batch_norm1 = nn.BatchNorm2d(num_features=n_channels, momentum=0.1)
+
+        self.res1 = ResBlockSmall(n_channels)
+
+        self.conv2 = nn.Conv2d(
+            n_channels, n_channels, stride=2, kernel_size=3, padding=1
+        )
+
+        self.res2 = ResBlockSmall(n_channels)
+        self.av_pool1 = nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
+        self.res3 = ResBlockSmall(n_channels)
+        self.av_pool2 = nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
+        self.res4 = ResBlockSmall(n_channels)
+
+        self.conv3 = nn.Conv2d(
+            n_channels, latent_depth, stride=1, kernel_size=3, padding=1
+        )
 
     def forward(self, x):  # inputs are 96x96??
         x = x.to(dtype=torch.float32)
@@ -295,7 +346,7 @@ class AtariDynamicsNet(nn.Module):
         self.conv1 = nn.Conv2d(
             latent_depth + action_space_size, latent_depth, kernel_size=3, padding=1
         )
-        self.res1 = ResBlock(latent_depth)
+        self.res1 = ResBlockSmall(latent_depth)
 
         self.fc1 = nn.Linear(latent_area * latent_depth, reward_head_width)
         self.fc2 = nn.Linear(reward_head_width, self.full_support_width)
@@ -357,7 +408,8 @@ def support_to_scalar(support, epsilon=0.00001):
         squeeze = True
         support.unsqueeze_(0)
 
-    assert all(abs(torch.sum(support, dim=1)) - 1 < 0.001)
+    if not all(abs(torch.sum(support, dim=1)) - 1 < 0.01):
+        print(support)
 
     half_width = int((support.shape[1] - 1) / 2)
     vals = torch.tensor(
@@ -408,3 +460,9 @@ def scalar_to_support(scalar: torch.Tensor, epsilon=0.00001, half_width: int = 1
         support.squeeze_(0)
 
     return support
+
+
+def normalize(image):
+    breakout_mean, breakout_std = 46, 66
+    image_a = (np.array(image, dtype=np.float32) - breakout_mean) / breakout_std
+    return image_a
