@@ -1,4 +1,4 @@
-env_name: "Breakout-v0"
+env_name: "MsPacman-v0"
 obs_type: "image"
 seed: 0 
 
@@ -36,7 +36,7 @@ n_simulations: 20
 log_dir: "runs"
 log_name: "None"
 debug: False
-render: False
+render: True
 print_simple: True
 max_games: 400
 temp_time: 50
