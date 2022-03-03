@@ -311,13 +311,13 @@ class MCTS:
                     self.mu_net.parameters(), self.config["grad_clip"]
                 )
             self.mu_net.optimizer.step()
-            print("rn1", torch.mean(torch.abs(self.mu_net.repr_net.conv1.weight.grad)))
-            print("rn3", torch.mean(torch.abs(self.mu_net.repr_net.conv3.weight.grad)))
-            print("dn1", torch.mean(torch.abs(self.mu_net.dyna_net.conv1.weight.grad)))
-            print("dnf", torch.mean(torch.abs(self.mu_net.dyna_net.fc2.weight.grad)))
-            print(
-                "pnv", torch.mean(torch.abs(self.mu_net.pred_net.fc_value.weight.grad))
-            )
+            # print("rn1", torch.mean(torch.abs(self.mu_net.repr_net.conv1.weight.grad)))
+            # print("rn3", torch.mean(torch.abs(self.mu_net.repr_net.conv3.weight.grad)))
+            # print("dn1", torch.mean(torch.abs(self.mu_net.dyna_net.conv1.weight.grad)))
+            # print("dnf", torch.mean(torch.abs(self.mu_net.dyna_net.fc2.weight.grad)))
+            # print(
+            #     "pnv", torch.mean(torch.abs(self.mu_net.pred_net.fc_value.weight.grad))
+            # )
             # print("rn1", torch.mean(torch.abs(self.mu_net.repr_net.fc1.weight.grad)))
             # print("dn1", torch.mean(torch.abs(self.mu_net.dyna_net.fc1.weight.grad)))
             # print("pn1", torch.mean(torch.abs(self.mu_net.pred_net.fc1.weight.grad)))

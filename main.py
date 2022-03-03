@@ -98,8 +98,8 @@ def run(config):
 
                 frame, reward, over, _ = env.step(action)
 
-                if config["env_name"] == "CartPole-v1" and frames % 20 > 0:
-                    reward = 0
+                # if config["env_name"] == "CartPole-v1" and frames % 20 > 0:
+                #     reward = 0
 
                 if config["obs_type"] == "image":
                     frame = normalize(frame)

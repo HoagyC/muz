@@ -13,7 +13,7 @@ discount: 0.997
 n_batches: 100
 batch_size: 30
 rollout_depth: 5
-reward_depth: 10
+reward_depth: 80
 buffer_size: 50
 consistency_loss: True
 consistency_weight: 0.5

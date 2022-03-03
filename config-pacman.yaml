@@ -1,4 +1,4 @@
-env_name: "Breakout-v0"
+env_name: "MsPacman-v0"
 obs_type: "image"
 seed: 0 
 
@@ -22,14 +22,14 @@ reanalyse_n: 1
 grad_clip: 1
 
 # Replay params
-priority_replay: True
+priority_replay: False
 priority_alpha: 1
 priority_beta: 1
 
 # Model params
 latent_size: 20
 repr_channels: 12
-support_width: 25
+support_width: 50
 n_simulations: 20
 
 # Setup params  
