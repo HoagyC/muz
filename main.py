@@ -70,6 +70,11 @@ def run(config):
             over = False
             frame = env.reset()
 
+            if config["obs_type"] == "image":
+                frame = normalize(frame)
+            else:
+                frame = np.array(frame)
+
             game_record = GameRecord(
                 config=config,
                 action_size=action_size,
@@ -90,7 +95,11 @@ def run(config):
             vals = []
             game_start_time = time.time()
             while not over and frames < config["max_frames"]:
-                tree = mcts.search(config["n_simulations"], frame, device=device)
+                if config["obs_type"] == "image":
+                    frame_input = game_record.get_last_n(config["last_n_frames"])
+                else:
+                    frame_input = frame
+                tree = mcts.search(config["n_simulations"], frame_input, device=device)
                 action = tree.pick_game_action(temperature=temperature)
 
                 if config["render"]:

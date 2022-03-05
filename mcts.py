@@ -56,8 +56,6 @@ class MCTS:
         with torch.no_grad():
 
             frame_t = torch.tensor(current_frame, device=device)
-            if self.config["obs_type"] == "image":
-                frame_t = torch.einsum("hwc->chw", [frame_t])
             init_latent = self.mu_net.represent(frame_t.unsqueeze(0))[0]
             init_policy, init_val = [
                 x[0] for x in self.mu_net.predict(init_latent.unsqueeze(0))
@@ -197,9 +195,6 @@ class MCTS:
             # All batch tensors are index first by batch x rollout
             init_images = images[:, 0]
 
-            if self.config["obs_type"] == "image":
-                init_images = torch.einsum("bhwc->bchw", init_images)
-
             latents = self.mu_net.represent(init_images)
             for i in range(self.config["rollout_depth"]):
                 screen_t = torch.tensor(depths) > i
@@ -214,11 +209,7 @@ class MCTS:
                 target_policy_stepi = target_policies[:, i]
 
                 if self.config["consistency_loss"]:
-                    if self.config["obs_type"] == "image":
-                        images_chw = torch.einsum("bhwc->bchw", images[:, i])
-                        target_latents = self.mu_net.represent(images_chw).detach()
-                    else:
-                        target_latents = self.mu_net.represent(images[:, i]).detach()
+                    target_latents = self.mu_net.represent(images[:, i]).detach()
 
                 one_hot_actions = nn.functional.one_hot(
                     actions[:, i],

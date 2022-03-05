@@ -147,7 +147,11 @@ class MuZeroAtariNet(nn.Module):
             self.latent_depth, self.support_width, self.latent_area, self.action_size
         )
         self.repr_net = AtariRepresentationNet(
-            self.x_pad, self.y_pad, self.latent_depth, self.repr_channels
+            self.x_pad,
+            self.y_pad,
+            self.latent_depth,
+            self.repr_channels,
+            self.config["last_n_frames"],
         )
 
         self.policy_loss = nn.CrossEntropyLoss(reduction="none")
@@ -288,12 +292,14 @@ class AtariDereprNet(nn.Module):
 
 
 class AtariRepresentationNet(nn.Module):
-    def __init__(self, x_pad, y_pad, latent_depth, n_channels):
+    def __init__(self, x_pad, y_pad, latent_depth, n_channels, last_n_frames):
         super().__init__()
 
         self.pad = (0, x_pad, 0, y_pad)
 
-        self.conv1 = nn.Conv2d(3, n_channels, stride=2, kernel_size=3, padding=1)
+        self.conv1 = nn.Conv2d(
+            last_n_frames * 4, n_channels, stride=2, kernel_size=3, padding=1
+        )
         self.batch_norm1 = nn.BatchNorm2d(num_features=n_channels, momentum=0.1)
 
         self.res1 = ResBlockSmall(n_channels)
@@ -463,6 +469,5 @@ def scalar_to_support(scalar: torch.Tensor, epsilon=0.00001, half_width: int = 1
 
 
 def normalize(image):
-    breakout_mean, breakout_std = 46, 66
-    image_a = (np.array(image, dtype=np.float32) - breakout_mean) / breakout_std
-    return image_a
+    image_a = (np.array(image, dtype=np.float32)) / 256
+    return image_a.transpose(2, 0, 1)
