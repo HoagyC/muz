@@ -66,7 +66,6 @@ class GameRecord:
         last_n_actions = [-1] * (n - len(last_n_actions)) + last_n_actions
         last_n_actions = torch.tensor(last_n_actions, dtype=torch.float32) + 1
         last_n_actions /= self.action_size
-        print(n, len(self.actions), len(last_n_actions), pos, pos - n + 1)
 
         action_planes = torch.ones(last_n.shape[1:])
         action_planes = torch.einsum("hw, a->ahw", [action_planes, last_n_actions])
@@ -74,7 +73,6 @@ class GameRecord:
         pad_len = (n * 3) - last_n.shape[0]
         pad_a = np.zeros((pad_len, *last_n.shape[1:]))
         last_n = np.concatenate((action_planes, pad_a, last_n), axis=0)
-        print(last_n.shape)
         return last_n
 
     def add_priorities(self, n_steps=5, reanalysing=False):
@@ -155,9 +153,14 @@ class GameRecord:
                 )
 
             # include all observations for consistency loss
-            images = [
-                self.get_last_n(pos=x) for x in range(ndx, ndx + actual_rollout_depth)
-            ]
+            if self.config["obs_type"] == "image":
+                images = [
+                    self.get_last_n(pos=x)
+                    for x in range(ndx, ndx + actual_rollout_depth)
+                ]
+            else:
+                images = self.observations[ndx : ndx + actual_rollout_depth]
+
             actions = self.actions[ndx : ndx + actual_rollout_depth]
 
             unused_rollout = rollout_depth - actual_rollout_depth
@@ -179,9 +182,11 @@ class GameRecord:
 
     def reanalyse(self, mcts, current_game):
         # Reanalyse all except last observation for which there is no corresponding action
-        for i, obs in enumerate(
-            [self.get_last_n(pos=x) for x in range(len(self.observations) - 1)]
-        ):
+        if self.config["obs_type"] == "image":
+            obs_l = [self.get_last_n(pos=x) for x in range(len(self.observations) - 1)]
+        else:
+            obs_l = self.observations[:-1]
+        for i, obs in enumerate(obs_l):
             new_root = mcts.search(self.config["n_simulations"], obs)
             self.values[i] = new_root.average_val
             self.add_priorities(n_steps=mcts.config["reward_depth"], reanalysing=True)

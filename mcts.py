@@ -302,16 +302,6 @@ class MCTS:
                     self.mu_net.parameters(), self.config["grad_clip"]
                 )
             self.mu_net.optimizer.step()
-            # print("rn1", torch.mean(torch.abs(self.mu_net.repr_net.conv1.weight.grad)))
-            # print("rn3", torch.mean(torch.abs(self.mu_net.repr_net.conv3.weight.grad)))
-            # print("dn1", torch.mean(torch.abs(self.mu_net.dyna_net.conv1.weight.grad)))
-            # print("dnf", torch.mean(torch.abs(self.mu_net.dyna_net.fc2.weight.grad)))
-            # print(
-            #     "pnv", torch.mean(torch.abs(self.mu_net.pred_net.fc_value.weight.grad))
-            # )
-            # print("rn1", torch.mean(torch.abs(self.mu_net.repr_net.fc1.weight.grad)))
-            # print("dn1", torch.mean(torch.abs(self.mu_net.dyna_net.fc1.weight.grad)))
-            # print("pn1", torch.mean(torch.abs(self.mu_net.pred_net.fc1.weight.grad)))
 
             total_loss += batch_loss
             total_value_loss += batch_value_loss
@@ -489,19 +479,7 @@ class TreeNode:
         # Prints a lot of useful information for how the algorithm is making decisions
         if self.config["debug"]:
             val_preds = [c.val_pred if c else 0 for c in self.children]
-            print(
-                visit_counts,
-                self.val_pred,
-                val_preds,
-                "L" if val_preds[0] > val_preds[1] else "R",
-                "   ",
-                "T"
-                if action == 0
-                and val_preds[0] > val_preds[1]
-                or action == 1
-                and val_preds[0] <= val_preds[1]
-                else "F",
-            )
+            print(visit_counts, self.val_pred, val_preds)
 
         return action
 

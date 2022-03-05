@@ -101,6 +101,9 @@ def run(config):
                     frame_input = frame
                 tree = mcts.search(config["n_simulations"], frame_input, device=device)
                 action = tree.pick_game_action(temperature=temperature)
+                if config["debug"]:
+                    if tree.children[action]:
+                        print(float(tree.children[action].reward))
 
                 if config["render"]:
                     env.render("human")
