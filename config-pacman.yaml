@@ -10,8 +10,8 @@ root_dirichlet_alpha: 0.25
 explore_frac: 0.25
 val_weight: 2
 discount: 0.997
-n_batches: 30
-batch_size: 10
+n_batches: 60
+batch_size: 5
 rollout_depth: 5
 reward_depth: 100
 buffer_size: 100
@@ -20,7 +20,7 @@ consistency_weight: 0.5
 reanalyse: True
 reanalyse_n: 1
 grad_clip: 1
-last_n_frames: 10 
+last_n_frames: 4
 
 # Replay params
 priority_replay: False
@@ -35,11 +35,11 @@ n_simulations: 20
 
 # Setup params  
 log_dir: "runs"
-log_name: "None"
-debug: False
+log_name: "last"
+debug: True
 render: True
 print_simple: True
 max_games: 400
-temp_time: 50
+temp_time: 20
 
-max_frames: 3000
+max_frames: 3000  

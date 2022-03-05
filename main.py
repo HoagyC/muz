@@ -37,8 +37,16 @@ def run(config):
     learning_rate = config["learning_rate"]
     muzero_network.init_optim(learning_rate)
 
+    if config["log_name"] == "last":
+        runs = [x for x in os.listdir("runs") if config["env_name"] in x]
+        if runs:
+            config["log_name"] = runs[-1]
+        else:
+            config["log_name"] = "None"
     if config["log_name"] == "None":
-        config["log_name"] = datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
+        config["log_name"] = (
+            datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S") + config["env_name"]
+        )
 
     log_dir = os.path.join(config["log_dir"], config["log_name"])
     tb_writer = SummaryWriter(log_dir=log_dir)
