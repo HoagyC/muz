@@ -117,6 +117,14 @@ class MCTS:
                         ]
 
                         # convert logits to scalars and probaility distributions
+                        if (
+                            abs(
+                                support_to_scalar(torch.softmax(reward, 0))
+                                - 0.0027178525924682617
+                            )
+                            < 0.000001
+                        ):
+                            print(reward)
                         reward = support_to_scalar(torch.softmax(reward, 0))
                         new_val = support_to_scalar(torch.softmax(new_val, 0))
                         policy_probs = torch.softmax(new_policy, 0)
@@ -411,13 +419,13 @@ class TreeNode:
         """
         Scoring function for the different potential actions, following the formula in Appendix B of muzero
         """
-        c1 = 1.25
+        c1 = 0.75
         c2 = 19652
 
         child = self.children[action_n]
 
         n = child.num_visits if child else 0
-        q = child.average_val if child else 0
+        q = self.minmax.normalize(child.average_val) if child else 0.2
 
         # p here is the prior - the expectation of what the the policy will look like
         prior = self.pol_pred[action_n]
@@ -431,7 +439,7 @@ class TreeNode:
         # close to 1.
         balance_term = c1 + math.log((total_visit_count + c2 + 1) / c2)
 
-        score = self.minmax.normalize(q) + (prior * explore_term * balance_term)
+        score = q + (prior * explore_term * balance_term)
 
         return score
 

@@ -182,14 +182,14 @@ class GameRecord:
 
     def reanalyse(self, mcts, current_game):
         # Reanalyse all except last observation for which there is no corresponding action
-        for i in range(len(self.observations)):
-        if self.config["obs_type"] == "image":
-            obs = self.get_last_n(pos=i)
-        else:
-            obs = self.observations[:-1]
-        new_root = mcts.search(self.config["n_simulations"], obs)
-        self.values[i] = new_root.average_val
-        self.add_priorities(n_steps=mcts.config["reward_depth"], reanalysing=True)
+        for i in range(len(self.observations) - 1):
+            if self.config["obs_type"] == "image":
+                obs = self.get_last_n(pos=i)
+            else:
+                obs = self.observations[:-1]
+            new_root = mcts.search(self.config["n_simulations"], obs)
+            self.values[i] = new_root.average_val
+            self.add_priorities(n_steps=mcts.config["reward_depth"], reanalysing=True)
 
         self.last_analysed = current_game
         return self
