@@ -117,14 +117,6 @@ class MCTS:
                         ]
 
                         # convert logits to scalars and probaility distributions
-                        if (
-                            abs(
-                                support_to_scalar(torch.softmax(reward, 0))
-                                - 0.0027178525924682617
-                            )
-                            < 0.000001
-                        ):
-                            print(reward)
                         reward = support_to_scalar(torch.softmax(reward, 0))
                         new_val = support_to_scalar(torch.softmax(new_val, 0))
                         policy_probs = torch.softmax(new_policy, 0)
