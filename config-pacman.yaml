@@ -35,11 +35,11 @@ n_simulations: 20
 
 # Setup params  
 log_dir: "runs"
-log_name: "last"
+log_name: "gdriveMsPacman-v0"
 debug: True
 render: True
 print_simple: True
 max_games: 400
-temp_time: 20
+temp_time: 0
 
 max_frames: 3000  

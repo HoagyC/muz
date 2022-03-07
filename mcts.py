@@ -49,7 +49,7 @@ class MCTS:
         and that the value and reward are represented categorically rather than
         as a scalar
         """
-        self.load_model()
+        self.load_model(device=device)
         self.mu_net.eval()
         self.mu_net = self.mu_net.to(device)
 
@@ -340,10 +340,10 @@ class MCTS:
         path = os.path.join(self.log_dir, "latest_model_dict.pt")
         torch.save(self.mu_net.state_dict(), path)
 
-    def load_model(self):
+    def load_model(self, device=torch.device("cpu")):
         path = os.path.join(self.log_dir, "latest_model_dict.pt")
         if os.path.exists(path):
-            self.mu_net.load_state_dict(torch.load(path))
+            self.mu_net.load_state_dict(torch.load(path, map_location=device))
 
 
 class TreeNode:
