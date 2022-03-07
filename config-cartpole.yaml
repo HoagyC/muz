@@ -20,6 +20,7 @@ consistency_weight: 0.5
 reanalyse: True
 reanalyse_n: 1
 grad_clip: 0 # 0 indicates no clipping
+prior_weight: 1
 
 # Replay params
 priority_replay: False
@@ -34,8 +35,8 @@ n_simulations: 40
 # Setup params  
 log_dir: "runs"
 log_name: "None"
-debug: False
-render: False
+debug: True
+render: True
 print_simple: True
 max_games: 1000
 temp_time: 20

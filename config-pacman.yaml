@@ -21,6 +21,7 @@ reanalyse: True
 reanalyse_n: 1
 grad_clip: 1
 last_n_frames: 4
+prior_weight: 0
 
 # Replay params
 priority_replay: False
@@ -40,6 +41,6 @@ debug: True
 render: True
 print_simple: True
 max_games: 400
-temp_time: 0
+temp_time: 5
 
 max_frames: 3000  

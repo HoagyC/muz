@@ -94,7 +94,6 @@ class MCTS:
                     value_pred = current_node.val_pred
                     policy_pred = current_node.pol_pred
                     latent = current_node.latent
-
                     action = current_node.pick_action()
 
                     # if we pick an action that's been picked before we don't need to run the model to explore it
@@ -372,7 +371,7 @@ class TreeNode:
         self.val_pred = val_pred
         self.pol_pred = pol_pred
         self.parent = parent
-        self.average_val = 0
+        self.average_val = val_pred
         self.num_visits = num_visits
         self.reward = reward
 
@@ -411,13 +410,14 @@ class TreeNode:
         """
         Scoring function for the different potential actions, following the formula in Appendix B of muzero
         """
-        c1 = 0.75
+        c1 = 1.25
         c2 = 19652
 
         child = self.children[action_n]
 
         n = child.num_visits if child else 0
-        q = self.minmax.normalize(child.average_val) if child else 0.2
+
+        q = self.minmax.normalize(child.average_val) if child else 0
 
         # p here is the prior - the expectation of what the the policy will look like
         prior = self.pol_pred[action_n]
@@ -430,7 +430,6 @@ class TreeNode:
         # Its utility is questionable, because with on the order of 100 simulations, this term will always be
         # close to 1.
         balance_term = c1 + math.log((total_visit_count + c2 + 1) / c2)
-
         score = q + (prior * explore_term * balance_term)
 
         return score

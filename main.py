@@ -47,6 +47,9 @@ def run(config):
         config["log_name"] = (
             datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S") + config["env_name"]
         )
+
+    # if "config.yaml" in os.listdir(os.path.join(config["log_dir"], config["log_name"]):
+
     print(f"Logging to '{config['log_name']}'")
 
     log_dir = os.path.join(config["log_dir"], config["log_name"])
