@@ -38,7 +38,7 @@ def run(config):
     muzero_network.init_optim(learning_rate)
 
     if config["log_name"] == "last":
-        runs = [x for x in os.listdir("runs") if config["env_name"] in x]
+        runs = [x for x in os.listdir(config["log_dir"]) if config["env_name"] in x]
         if runs:
             config["log_name"] = runs[-1]
         else:
@@ -182,5 +182,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 2 and sys.argv[2] == "colab":
         config["render"] = False
         config["debug"] = False
+        config["log_dir"] = "/content/gdrive/My Drive/muz"
+        config["batch_size"] = 50
 
     run(config)

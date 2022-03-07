@@ -186,7 +186,7 @@ class GameRecord:
             if self.config["obs_type"] == "image":
                 obs = self.get_last_n(pos=i)
             else:
-                obs = self.observations[:-1]
+                obs = self.observations[i]
             new_root = mcts.search(self.config["n_simulations"], obs)
             self.values[i] = new_root.average_val
             self.add_priorities(n_steps=mcts.config["reward_depth"], reanalysing=True)
