@@ -40,15 +40,13 @@ def run(config):
     if config["log_name"] == "last":
         runs = [x for x in os.listdir(config["log_dir"]) if config["env_name"] in x]
         if runs:
-            config["log_name"] = runs[-1]
+            config["log_name"] = sorted(runs)[-1]
         else:
             config["log_name"] = "None"
     if config["log_name"] == "None":
         config["log_name"] = (
             datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S") + config["env_name"]
         )
-
-    # if "config.yaml" in os.listdir(os.path.join(config["log_dir"], config["log_name"]):
 
     print(f"Logging to '{config['log_name']}'")
 
@@ -68,8 +66,13 @@ def run(config):
     # and the value which is the average value as calculated by the MCTS
     # can also store the reanalysed predicted root values
 
-    total_games = 0
-    total_frames = 0
+    if os.path.exists(os.path.join(log_dir, "data.yaml")):
+        data = yaml.safe_load(open(os.path.join(log_dir, "data.yaml"), "r"))
+        total_games = data["games"]
+        total_frames = data["steps"]
+    else:
+        total_games = 0
+        total_frames = 0
     start_time = time.time()
     scores = []
 
@@ -141,7 +144,7 @@ def run(config):
             time_per_move = (time.time() - game_start_time) / frames
 
             game_record.add_priorities(n_steps=config["reward_depth"])
-            if total_games > 1 and config["reanalyse"]:
+            if len(memory.buffer) > 2 and config["reanalyse"]:
                 memory.reanalyse(
                     mcts, current_game=total_games, n=config["reanalyse_n"]
                 )
@@ -167,6 +170,8 @@ def run(config):
                 + f"Value mean, std: {np.mean(np.array(vals)):6.2f}, {np.std(np.array(vals)):5.2f}. "
                 + f"s/move: {time_per_move:5.3f}. s/batch: {time_per_batch:6.3f}."
             )
+            with open(os.path.join(log_dir, "data.yaml"), "w+") as f:
+                yaml.dump({"steps": total_frames, "games": total_games}, f)
 
         except KeyboardInterrupt:
             breakpoint()

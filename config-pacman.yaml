@@ -14,7 +14,7 @@ n_batches: 60
 batch_size: 5
 rollout_depth: 5
 reward_depth: 100
-buffer_size: 100
+buffer_size: 10
 consistency_loss: True
 consistency_weight: 0.5
 reanalyse: True
