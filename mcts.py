@@ -1,146 +1,245 @@
+import datetime
 import math
 import os
 import random
 import time
 
 import numpy as np
+import ray
 
 import torch
 from torch import nn
 
 from torch.utils.tensorboard import SummaryWriter
 
-from training import ReplayBuffer
-from models import scalar_to_support, support_to_scalar
+from training import ReplayBuffer, GameRecord
+from models import scalar_to_support, support_to_scalar, normalize
 
 
-class MCTS:
-    """
-    MCTS is the class where contains the main algorithm - it contains within it the
-    models used to estimate the quantities of interest, as well as the functions to
-    create the tree of potential actions, and to train the relevant models
-    """
+@ray.remote
+class Player:
+    def __init__(self):
+        pass
 
-    def __init__(self, action_size, mu_net, config, log_dir):
-        self.action_size = action_size
-        self.config = config
-        self.log_dir = log_dir
+    def play(self, config, mu_net, device, log_dir, memory, env):
+        total_games = 0
+        total_frames = 0
+        minmax = MinMax()
+        start_time = time.time()
+        while True:
+            if "latest_model_dict.pt" in os.listdir(log_dir):
+                mu_net = ray.get(
+                    memory.load_model.remote(log_dir, mu_net, device=device)
+                )
+            else:
+                memory.save_model.remote(mu_net, log_dir)
 
-        # a class which holds the three functions as set out in MuZero paper: representation, prediction, dynamics
-        # and has an optimizer which updates the parameters for all three simultaneously
-        self.mu_net = mu_net
+            frames = 0
+            over = False
+            frame = env.reset()
 
-        # keeps track of the highest and lowest values found
-        self.minmax = MinMax()
+            if config["obs_type"] == "image":
+                frame = normalize(frame)
+            else:
+                frame = np.array(frame)
 
-    def search(self, n_simulations, current_frame, device=torch.device("cpu")):
-        """
-        This function takes a frame and creates a tree of possible actions that could
-        be taken from the frame, assessing the expected value at each location
-        and returning this tree which contains the data needed to choose an action
-
-        The models expect inputs where the first dimension is a batch dimension,
-        but the way in which we traverse the tree means we only pass a single
-        input at a time. There is therefore the need to consistently squeeze and unsqueeze
-        (ie add and remove the first dimension) so as not to confuse things by carrying around
-        extraneous dimensions
-
-        Note that mu_net returns logits for the policy, value and reward
-        and that the value and reward are represented categorically rather than
-        as a scalar
-        """
-        self.load_model(device=device)
-        self.mu_net.eval()
-        self.mu_net = self.mu_net.to(device)
-
-        with torch.no_grad():
-
-            frame_t = torch.tensor(current_frame, device=device)
-            init_latent = self.mu_net.represent(frame_t.unsqueeze(0))[0]
-            init_policy, init_val = [
-                x[0] for x in self.mu_net.predict(init_latent.unsqueeze(0))
-            ]
-
-            # Getting probabilities from logits and a scalar value from the categorical support
-            init_policy_probs = torch.softmax(init_policy, 0)
-            init_val = support_to_scalar(torch.softmax(init_val, 0))
-
-            init_policy_probs = add_dirichlet(
-                init_policy_probs,
-                self.config["root_dirichlet_alpha"],
-                self.config["explore_frac"],
+            game_record = GameRecord(
+                config=config,
+                action_size=mu_net.action_size,
+                init_frame=frame,
+                discount=config["discount"],
+                last_analysed=total_games,
             )
 
-            # initialize the search tree with a root node
-            root_node = TreeNode(
-                latent=init_latent,
-                action_size=self.action_size,
-                val_pred=init_val,
-                pol_pred=init_policy_probs,
-                minmax=self.minmax,
-                config=self.config,
-                num_visits=0,
+            if config["temp_time"] <= 0:
+                temperature = 0
+            else:
+                temperature = config["temp_time"] / (total_games + config["temp_time"])
+            score = 0
+
+            if total_games % 10 == 0 and total_games > 0:
+                learning_rate = config["learning_rate"] * (
+                    config["learning_rate_decay"] ** total_games // 10
+                )
+                mu_net.init_optim(learning_rate)
+
+            vals = []
+            game_start_time = time.time()
+            while not over and frames < config["max_frames"]:
+                if config["obs_type"] == "image":
+                    frame_input = game_record.get_last_n(config["last_n_frames"])
+                else:
+                    frame_input = frame
+                tree = search(
+                    config, mu_net, frame_input, minmax, log_dir, device=device
+                )
+                action = tree.pick_game_action(temperature=temperature)
+                if config["debug"]:
+                    if tree.children[action]:
+                        print(float(tree.children[action].reward))
+
+                if config["render"]:
+                    env.render("human")
+
+                frame, reward, over, _ = env.step(action)
+
+                # if config["env_name"] == "CartPole-v1" and frames % 20 > 0:
+                #     reward = 0
+
+                if config["obs_type"] == "image":
+                    frame = normalize(frame)
+                else:
+                    frame = np.array(frame)
+
+                game_record.add_step(frame, action, reward, tree)
+
+                # mcts.update()
+
+                frames += 1
+                score += reward
+                vals.append(float(tree.val_pred))
+
+            time_per_move = (time.time() - game_start_time) / frames
+
+            game_record.add_priorities(n_steps=config["reward_depth"])
+
+            memory.save_game.remote(game_record)
+
+            total_games += 1
+            total_frames += frames
+
+            print(
+                f"Game: {total_games:4}. Total frames: {total_frames:6}. "
+                + f"Time: {str(datetime.timedelta(seconds=int(time.time() - start_time)))}. Score: {score:6}. "
+                + f"Value mean, std: {np.mean(np.array(vals)):6.2f}, {np.std(np.array(vals)):5.2f}. "
+                + f"s/move: {time_per_move:5.3f}."
             )
 
-            for i in range(n_simulations):
-                # vital to have to grad or the size of the computation graph quickly becomes gigantic
-                current_node = root_node
-                new_node = False
 
-                # search list tracks the route of the simulation through the tree
-                search_list = []
-                while not new_node:
-                    search_list.append(current_node)
-                    value_pred = current_node.val_pred
-                    policy_pred = current_node.pol_pred
-                    latent = current_node.latent
-                    action = current_node.pick_action()
+def search(
+    config,
+    mu_net,
+    current_frame,
+    minmax,
+    log_dir,
+    device=torch.device("cpu"),
+):
+    """
+    This function takes a frame and creates a tree of possible actions that could
+    be taken from the frame, assessing the expected value at each location
+    and returning this tree which contains the data needed to choose an action
 
-                    # if we pick an action that's been picked before we don't need to run the model to explore it
-                    if current_node.children[action] is None:
-                        # Convert to a 2D tensor one-hot encoding the action
-                        action_t = nn.functional.one_hot(
-                            torch.tensor([action], device=device),
-                            num_classes=self.action_size,
-                        )
+    The models expect inputs where the first dimension is a batch dimension,
+    but the way in which we traverse the tree means we only pass a single
+    input at a time. There is therefore the need to consistently squeeze and unsqueeze
+    (ie add and remove the first dimension) so as not to confuse things by carrying around
+    extraneous dimensions
 
-                        # apply the dynamics function to get a representation of the state after the action, and the reward gained
-                        # then estimate the policy and value at this new state
+    Note that mu_net returns logits for the policy, value and reward
+    and that the value and reward are represented categorically rather than
+    as a scalar
+    """
+    mu_net.eval()
+    mu_net = mu_net.to(device)
 
-                        latent, reward = [
-                            x[0]
-                            for x in self.mu_net.dynamics(latent.unsqueeze(0), action_t)
-                        ]
-                        new_policy, new_val = [
-                            x[0] for x in self.mu_net.predict(latent.unsqueeze(0))
-                        ]
+    with torch.no_grad():
 
-                        # convert logits to scalars and probaility distributions
-                        reward = support_to_scalar(torch.softmax(reward, 0))
-                        new_val = support_to_scalar(torch.softmax(new_val, 0))
-                        policy_probs = torch.softmax(new_policy, 0)
+        frame_t = torch.tensor(current_frame, device=device)
+        init_latent = mu_net.represent(frame_t.unsqueeze(0))[0]
+        init_policy, init_val = [x[0] for x in mu_net.predict(init_latent.unsqueeze(0))]
 
-                        current_node.insert(
-                            action_n=action,
-                            latent=latent,
-                            val_pred=new_val,
-                            pol_pred=policy_probs,
-                            reward=reward,
-                            minmax=self.minmax,
-                            config=self.config,
-                        )
+        # Getting probabilities from logits and a scalar value from the categorical support
+        init_policy_probs = torch.softmax(init_policy, 0)
+        init_val = support_to_scalar(torch.softmax(init_val, 0))
 
-                        # We have reached a new node and therefore this is the end of the simulation
-                        new_node = True
-                    else:
-                        # If we have already explored this node then we take the child as our new current node
-                        current_node = current_node.children[action]
+        init_policy_probs = add_dirichlet(
+            init_policy_probs,
+            config["root_dirichlet_alpha"],
+            config["explore_frac"],
+        )
 
-                # Updates the visit counts and average values of the nodes that have been traversed
-                self.backpropagate(search_list, new_val)
-        return root_node
+        # initialize the search tree with a root node
+        root_node = TreeNode(
+            latent=init_latent,
+            action_size=mu_net.action_size,
+            val_pred=init_val,
+            pol_pred=init_policy_probs,
+            minmax=minmax,
+            config=config,
+            num_visits=0,
+        )
 
-    def train(self, buffer: ReplayBuffer, n_batches: int, device=torch.device("cpu")):
+        for i in range(config["n_simulations"]):
+            # vital to have to grad or the size of the computation graph quickly becomes gigantic
+            current_node = root_node
+            new_node = False
+
+            # search list tracks the route of the simulation through the tree
+            search_list = []
+            while not new_node:
+                search_list.append(current_node)
+                value_pred = current_node.val_pred
+                policy_pred = current_node.pol_pred
+                latent = current_node.latent
+                action = current_node.pick_action()
+
+                # if we pick an action that's been picked before we don't need to run the model to explore it
+                if current_node.children[action] is None:
+                    # Convert to a 2D tensor one-hot encoding the action
+                    action_t = nn.functional.one_hot(
+                        torch.tensor([action], device=device),
+                        num_classes=mu_net.action_size,
+                    )
+
+                    # apply the dynamics function to get a representation of the state after the action, and the reward gained
+                    # then estimate the policy and value at this new state
+
+                    latent, reward = [
+                        x[0] for x in mu_net.dynamics(latent.unsqueeze(0), action_t)
+                    ]
+                    new_policy, new_val = [
+                        x[0] for x in mu_net.predict(latent.unsqueeze(0))
+                    ]
+
+                    # convert logits to scalars and probaility distributions
+                    reward = support_to_scalar(torch.softmax(reward, 0))
+                    new_val = support_to_scalar(torch.softmax(new_val, 0))
+                    policy_probs = torch.softmax(new_policy, 0)
+
+                    current_node.insert(
+                        action_n=action,
+                        latent=latent,
+                        val_pred=new_val,
+                        pol_pred=policy_probs,
+                        reward=reward,
+                        minmax=minmax,
+                        config=config,
+                    )
+
+                    # We have reached a new node and therefore this is the end of the simulation
+                    new_node = True
+                else:
+                    # If we have already explored this node then we take the child as our new current node
+                    current_node = current_node.children[action]
+
+            # Updates the visit counts and average values of the nodes that have been traversed
+            backpropagate(search_list, new_val, minmax, config["discount"])
+    return root_node
+
+
+@ray.remote
+class Trainer:
+    def __init__(self):
+        pass
+
+    def train(
+        self,
+        mu_net,
+        memory,
+        config,
+        log_dir,
+        device=torch.device("cpu"),
+    ):
         """
         The train function simultaneously trains the prediction, dynamics and representation functions
         each batch has a series of values, rewards and policies, that must be predicted only
@@ -150,199 +249,212 @@ class MCTS:
         is trained - is it akin to training through a recurrent neural network with the prediction function
         as a head
         """
-        (
-            total_loss,
-            total_policy_loss,
-            total_reward_loss,
-            total_value_loss,
-            total_consistency_loss,
-        ) = (0, 0, 0, 0, 0)
-
-        val_diff = 0
-
-        self.mu_net.train()
-        self.mu_net = self.mu_net.to(device)
-
-        for _ in range(n_batches):
+        while True:
+            while ray.get(memory.get_buffer_len.remote()) == 0:
+                time.sleep(1)
             (
-                batch_policy_loss,
-                batch_reward_loss,
-                batch_value_loss,
-                batch_consistency_loss,
-            ) = (0, 0, 0, 0)
-            (
-                images,
-                actions,
-                target_values,
-                target_rewards,
-                target_policies,
-                weights,
-                depths,
-            ) = buffer.get_batch(batch_size=self.config["batch_size"], device=device)
+                total_loss,
+                total_policy_loss,
+                total_reward_loss,
+                total_value_loss,
+                total_consistency_loss,
+            ) = (0, 0, 0, 0, 0)
 
-            assert (
-                len(actions)
-                == len(target_policies)
-                == len(target_rewards)
-                == len(target_values)
-                == len(images)
-            )
-            assert self.config["rollout_depth"] == actions.shape[1]
+            val_diff = 0
+            if "latest_model_dict.pt" in os.listdir(log_dir):
+                mu_net = load_model(log_dir, mu_net, device=device)
+            mu_net.train()
+            mu_net = mu_net.to(device)
 
-            # This is how far we will deny the use of the representation function,
-            # requiring the dynamics function to learn to represent the s, a -> s function
-            # All batch tensors are index first by batch x rollout
-            init_images = images[:, 0]
-
-            latents = self.mu_net.represent(init_images)
-            for i in range(self.config["rollout_depth"]):
-                screen_t = torch.tensor(depths) > i
-                if torch.sum(screen_t) < 1:
-                    continue
-
-                # We must do tthis sequentially, as the input to the dynamics function requires the output
-                # from the previous dynamics function
-
-                target_value_stepi = target_values[:, i]
-                target_reward_stepi = target_rewards[:, i]
-                target_policy_stepi = target_policies[:, i]
-
-                if self.config["consistency_loss"]:
-                    target_latents = self.mu_net.represent(images[:, i]).detach()
-
-                one_hot_actions = nn.functional.one_hot(
-                    actions[:, i],
-                    num_classes=self.action_size,
-                ).to(device=device)
-
-                pred_policy_logits, pred_value_logits = self.mu_net.predict(latents)
-
-                new_latents, pred_reward_logits = self.mu_net.dynamics(
-                    latents, one_hot_actions
-                )
-
-                # We scale down the gradient, I believe so that the gradient at the base of the unrolled
-                # network converges to a maximum rather than increasing linearly with depth
-                new_latents.register_hook(lambda grad: grad * 0.5)
-
-                target_reward_sup_i = scalar_to_support(
-                    target_reward_stepi, half_width=self.config["support_width"]
-                )
-
-                target_value_sup_i = scalar_to_support(
-                    target_value_stepi, half_width=self.config["support_width"]
-                )
-
-                # Cutting off cases where there's not enough data for a full rollout
-
-                # The muzero paper calculates the loss as the squared difference between scalars
-                # but CrossEntropyLoss is used here for a more stable value loss when large values are encountered
-                value_loss = self.mu_net.value_loss(
-                    pred_value_logits[screen_t], target_value_sup_i[screen_t]
-                )
-
-                val_diff += sum(
-                    target_value_stepi[screen_t]
-                    - support_to_scalar(
-                        torch.softmax(pred_value_logits[screen_t], dim=1)
+            for _ in range(config["n_batches"]):
+                (
+                    batch_policy_loss,
+                    batch_reward_loss,
+                    batch_value_loss,
+                    batch_consistency_loss,
+                ) = (0, 0, 0, 0)
+                (
+                    images,
+                    actions,
+                    target_values,
+                    target_rewards,
+                    target_policies,
+                    weights,
+                    depths,
+                ) = ray.get(
+                    memory.get_batch.remote(
+                        batch_size=config["batch_size"], device=device
                     )
                 )
 
-                reward_loss = self.mu_net.reward_loss(
-                    pred_reward_logits[screen_t], target_reward_sup_i[screen_t]
+                assert (
+                    len(actions)
+                    == len(target_policies)
+                    == len(target_rewards)
+                    == len(target_values)
+                    == len(images)
                 )
-                policy_loss = self.mu_net.policy_loss(
-                    pred_policy_logits[screen_t], target_policy_stepi[screen_t]
-                )
+                assert config["rollout_depth"] == actions.shape[1]
 
-                if self.config["consistency_loss"]:
-                    consistency_loss = self.mu_net.consistency_loss(
-                        latents[screen_t], target_latents[screen_t]
+                # This is how far we will deny the use of the representation function,
+                # requiring the dynamics function to learn to represent the s, a -> s function
+                # All batch tensors are index first by batch x rollout
+                init_images = images[:, 0]
+
+                latents = mu_net.represent(init_images)
+                for i in range(config["rollout_depth"]):
+                    screen_t = torch.tensor(depths) > i
+                    if torch.sum(screen_t) < 1:
+                        continue
+
+                    # We must do tthis sequentially, as the input to the dynamics function requires the output
+                    # from the previous dynamics function
+
+                    target_value_stepi = target_values[:, i]
+                    target_reward_stepi = target_rewards[:, i]
+                    target_policy_stepi = target_policies[:, i]
+
+                    if config["consistency_loss"]:
+                        target_latents = mu_net.represent(images[:, i]).detach()
+
+                    one_hot_actions = nn.functional.one_hot(
+                        actions[:, i],
+                        num_classes=mu_net.action_size,
+                    ).to(device=device)
+
+                    pred_policy_logits, pred_value_logits = mu_net.predict(latents)
+
+                    new_latents, pred_reward_logits = mu_net.dynamics(
+                        latents, one_hot_actions
                     )
-                else:
-                    consistency_loss = 0
 
-                batch_policy_loss += (policy_loss * weights[screen_t]).sum()
-                batch_value_loss += (value_loss * weights[screen_t]).sum()
-                batch_reward_loss += (reward_loss * weights[screen_t]).sum()
-                batch_consistency_loss += (consistency_loss * weights[screen_t]).sum()
+                    # We scale down the gradient, I believe so that the gradient at the base of the unrolled
+                    # network converges to a maximum rather than increasing linearly with depth
+                    new_latents.register_hook(lambda grad: grad * 0.5)
 
-                latents = new_latents
+                    target_reward_sup_i = scalar_to_support(
+                        target_reward_stepi, half_width=config["support_width"]
+                    )
 
-                # print(
-                #     target_value_stepi,
-                #     pred_value_logits[screen_t],
-                #     torch.softmax(pred_value_logits[screen_t], dim=1),
-                #     support_to_scalar(
-                #         torch.softmax(pred_value_logits[screen_t], dim=1)
-                #     ),
-                #     target_value_sup_i,
-                # )
-            # Aggregate the losses to a single measure
-            batch_loss = (
-                batch_policy_loss
-                + batch_reward_loss
-                + (batch_value_loss * self.config["val_weight"])
-                + (batch_consistency_loss * self.config["consistency_weight"])
-            ) / self.config["batch_size"]
+                    target_value_sup_i = scalar_to_support(
+                        target_value_stepi, half_width=config["support_width"]
+                    )
 
-            batch_loss = batch_loss.mean()
+                    # Cutting off cases where there's not enough data for a full rollout
 
-            if self.config["debug"]:
-                print(
-                    f"v {batch_value_loss}, r {batch_reward_loss}, p {batch_policy_loss}, c {batch_consistency_loss}"
-                )
+                    # The muzero paper calculates the loss as the squared difference between scalars
+                    # but CrossEntropyLoss is used here for a more stable value loss when large values are encountered
+                    value_loss = mu_net.value_loss(
+                        pred_value_logits[screen_t], target_value_sup_i[screen_t]
+                    )
 
-            # Zero the gradients in the computation graph and then propagate the loss back through it
-            self.mu_net.optimizer.zero_grad()
-            batch_loss.backward()
-            if self.config["grad_clip"] != 0:
-                torch.nn.utils.clip_grad_norm_(
-                    self.mu_net.parameters(), self.config["grad_clip"]
-                )
-            self.mu_net.optimizer.step()
+                    val_diff += sum(
+                        target_value_stepi[screen_t]
+                        - support_to_scalar(
+                            torch.softmax(pred_value_logits[screen_t], dim=1)
+                        )
+                    )
 
-            total_loss += batch_loss
-            total_value_loss += batch_value_loss
-            total_policy_loss += batch_policy_loss
-            total_reward_loss += batch_reward_loss
-            total_consistency_loss += batch_consistency_loss
+                    reward_loss = mu_net.reward_loss(
+                        pred_reward_logits[screen_t], target_reward_sup_i[screen_t]
+                    )
+                    policy_loss = mu_net.policy_loss(
+                        pred_policy_logits[screen_t], target_policy_stepi[screen_t]
+                    )
 
-        metrics_dict = {
-            "Loss/total": total_loss,
-            "Loss/policy": total_policy_loss,
-            "Loss/reward": total_reward_loss,
-            "Loss/value": (total_value_loss * self.config["val_weight"]),
-            "Loss/consistency": (
-                total_consistency_loss * self.config["consistency_weight"]
-            ),
-        }
+                    if config["consistency_loss"]:
+                        consistency_loss = mu_net.consistency_loss(
+                            latents[screen_t], target_latents[screen_t]
+                        )
+                    else:
+                        consistency_loss = 0
 
-        self.save_model()
-        # print(f"Total val diff {val_diff}")
+                    batch_policy_loss += (policy_loss * weights[screen_t]).sum()
+                    batch_value_loss += (value_loss * weights[screen_t]).sum()
+                    batch_reward_loss += (reward_loss * weights[screen_t]).sum()
+                    batch_consistency_loss += (
+                        consistency_loss * weights[screen_t]
+                    ).sum()
+
+                    latents = new_latents
+
+                    # print(
+                    #     target_value_stepi,
+                    #     pred_value_logits[screen_t],
+                    #     torch.softmax(pred_value_logits[screen_t], dim=1),
+                    #     support_to_scalar(
+                    #         torch.softmax(pred_value_logits[screen_t], dim=1)
+                    #     ),
+                    #     target_value_sup_i,
+                    # )
+                # Aggregate the losses to a single measure
+                batch_loss = (
+                    batch_policy_loss
+                    + batch_reward_loss
+                    + (batch_value_loss * config["val_weight"])
+                    + (batch_consistency_loss * config["consistency_weight"])
+                ) / config["batch_size"]
+
+                batch_loss = batch_loss.mean()
+
+                if config["debug"]:
+                    print(
+                        f"v {batch_value_loss}, r {batch_reward_loss}, p {batch_policy_loss}, c {batch_consistency_loss}"
+                    )
+
+                # Zero the gradients in the computation graph and then propagate the loss back through it
+                mu_net.optimizer.zero_grad()
+                batch_loss.backward()
+                if config["grad_clip"] != 0:
+                    torch.nn.utils.clip_grad_norm_(
+                        mu_net.parameters(), config["grad_clip"]
+                    )
+                mu_net.optimizer.step()
+
+                total_loss += batch_loss
+                total_value_loss += batch_value_loss
+                total_policy_loss += batch_policy_loss
+                total_reward_loss += batch_reward_loss
+                total_consistency_loss += batch_consistency_loss
+
+            metrics_dict = {
+                "Loss/total": total_loss,
+                "Loss/policy": total_policy_loss,
+                "Loss/reward": total_reward_loss,
+                "Loss/value": (total_value_loss * config["val_weight"]),
+                "Loss/consistency": (
+                    total_consistency_loss * config["consistency_weight"]
+                ),
+            }
+            memory.save_model.remote(mu_net, log_dir)
+            print(f'Trained {config["n_batches"]} of size {config["batch_size"]}')
+
         return metrics_dict
 
-    def backpropagate(
-        self,
-        search_list,
-        value,
-    ):
-        """Going backward through the visited nodes, we increase the visit count of each by one
-        and set the value, discounting the value at the node ahead, but then adding the reward"""
-        for node in search_list[::-1]:
-            node.num_visits += 1
-            node.update_val(value)
-            value = node.reward + (value * self.config["discount"])
-            self.minmax.update(value)
 
-    def save_model(self):
-        path = os.path.join(self.log_dir, "latest_model_dict.pt")
-        torch.save(self.mu_net.state_dict(), path)
+def backpropagate(search_list, value, minmax, discount):
+    """Going backward through the visited nodes, we increase the visit count of each by one
+    and set the value, discounting the value at the node ahead, but then adding the reward"""
+    for node in search_list[::-1]:
+        node.num_visits += 1
+        node.update_val(value)
+        value = node.reward + (value * discount)
+        minmax.update(value)
 
-    def load_model(self, device=torch.device("cpu")):
-        path = os.path.join(self.log_dir, "latest_model_dict.pt")
-        if os.path.exists(path):
-            self.mu_net.load_state_dict(torch.load(path, map_location=device))
+
+def save_model(model, log_dir):
+    path = os.path.join(log_dir, "latest_model_dict.pt")
+    torch.save(model.state_dict(), path)
+
+
+def load_model(log_dir, model, device=torch.device("cpu")):
+    path = os.path.join(log_dir, "latest_model_dict.pt")
+    if os.path.exists(path):
+        model.load_state_dict(torch.load(path, map_location=device))
+    else:
+        print(f"no dict to load at {path}")
+
+    return model
 
 
 class TreeNode:

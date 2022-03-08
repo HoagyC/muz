@@ -11,8 +11,8 @@ import ray
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
-from mcts import MCTS
-from models import MuZeroCartNet, MuZeroAtariNet, normalize
+from mcts import Player, Trainer
+from models import MuZeroCartNet, MuZeroAtariNet
 from training import GameRecord, ReplayBuffer
 
 
@@ -34,8 +34,7 @@ def run(config):
     muzero_class = net_type_dict[config["obs_type"]]
     print(muzero_class)
     muzero_network = muzero_class(action_size, obs_size, config)
-    learning_rate = config["learning_rate"]
-    muzero_network.init_optim(learning_rate)
+    muzero_network.init_optim(config["learning_rate"])
 
     if config["log_name"] == "last":
         runs = [x for x in os.listdir(config["log_dir"]) if config["env_name"] in x]
@@ -53,11 +52,7 @@ def run(config):
     log_dir = os.path.join(config["log_dir"], config["log_name"])
     tb_writer = SummaryWriter(log_dir=log_dir)
 
-    mcts = MCTS(
-        action_size=action_size, mu_net=muzero_network, config=config, log_dir=log_dir
-    )
-
-    memory = ReplayBuffer(config)
+    memory = ReplayBuffer.options(num_cpus=0.1).remote(config)
     # open muz implementation uses a GameHistory class
     # with observation_history, action_history, reward_history
     # to_play which is who is to play in case it's a multiplayer, turn-based game
@@ -79,103 +74,52 @@ def run(config):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(f"Training on device: {device}")
 
-    while total_games < config["max_games"]:
-        try:
-            frames = 0
-            over = False
-            frame = env.reset()
+    player = Player.options(num_cpus=0.2).remote()
+    trainer = Trainer.options(num_cpus=0.2).remote()
 
-            if config["obs_type"] == "image":
-                frame = normalize(frame)
-            else:
-                frame = np.array(frame)
+    player.play.remote(
+        config=config,
+        mu_net=muzero_network,
+        log_dir=log_dir,
+        device=torch.device("cpu"),
+        memory=memory,
+        env=env,
+    )
 
-            game_record = GameRecord(
-                config=config,
-                action_size=action_size,
-                init_frame=frame,
-                discount=config["discount"],
-                last_analysed=total_games,
-            )
-            if config["temp_time"] <= 0:
-                temperature = 0
-            else:
-                temperature = config["temp_time"] / (total_games + config["temp_time"])
-            score = 0
+    trainer.train.remote(
+        mu_net=muzero_network,
+        memory=memory,
+        config=config,
+        device=device,
+        log_dir=log_dir,
+    )
 
-            if total_games % 10 == 0 and total_games > 0:
-                learning_rate = learning_rate * config["learning_rate_decay"]
-                mcts.mu_net.init_optim(learning_rate)
+    while True:
+        time.sleep(10)
 
-            vals = []
-            game_start_time = time.time()
-            while not over and frames < config["max_frames"]:
-                if config["obs_type"] == "image":
-                    frame_input = game_record.get_last_n(config["last_n_frames"])
-                else:
-                    frame_input = frame
-                tree = mcts.search(config["n_simulations"], frame_input, device=device)
-                action = tree.pick_game_action(temperature=temperature)
-                if config["debug"]:
-                    if tree.children[action]:
-                        print(float(tree.children[action].reward))
+    #     metrics_dict = train(memory, config["n_batches"], device=device)
+    #     time_per_batch = (time.time() - train_start_time) / config["n_batches"]
 
-                if config["render"]:
-                    env.render("human")
+    #     for key, val in metrics_dict.items():
+    #         tb_writer.add_scalar(key, val, total_games)
 
-                frame, reward, over, _ = env.step(action)
+    #     tb_writer.add_scalar("Score", score, total_games)
 
-                # if config["env_name"] == "CartPole-v1" and frames % 20 > 0:
-                #     reward = 0
+    #     scores.append(score)
+    #     total_games += 1
+    #     total_frames += frames
 
-                if config["obs_type"] == "image":
-                    frame = normalize(frame)
-                else:
-                    frame = np.array(frame)
+    #     print(
+    #         f"Game: {total_games:4}. Total frames: {total_frames:6}. "
+    #         + f"Time: {str(datetime.timedelta(seconds=int(time.time() - start_time)))}. Score: {score:6}. "
+    #         + f"Loss: {metrics_dict['Loss/total'].item():7.2f}. "
+    #         + f"Value mean, std: {np.mean(np.array(vals)):6.2f}, {np.std(np.array(vals)):5.2f}. "
+    #         + f"s/move: {time_per_move:5.3f}. s/batch: {time_per_batch:6.3f}."
+    #     )
+    #     with open(os.path.join(log_dir, "data.yaml"), "w+") as f:
+    #         yaml.dump({"steps": total_frames, "games": total_games}, f)
 
-                game_record.add_step(frame, action, reward, tree)
-
-                # mcts.update()
-
-                frames += 1
-                score += reward
-                vals.append(float(tree.val_pred))
-
-            time_per_move = (time.time() - game_start_time) / frames
-
-            game_record.add_priorities(n_steps=config["reward_depth"])
-            if len(memory.buffer) > 2 and config["reanalyse"]:
-                memory.reanalyse(
-                    mcts, current_game=total_games, n=config["reanalyse_n"]
-                )
-            memory.save_game(game_record)
-
-            train_start_time = time.time()
-            metrics_dict = mcts.train(memory, config["n_batches"], device=device)
-            time_per_batch = (time.time() - train_start_time) / config["n_batches"]
-
-            for key, val in metrics_dict.items():
-                tb_writer.add_scalar(key, val, total_games)
-
-            tb_writer.add_scalar("Score", score, total_games)
-
-            scores.append(score)
-            total_games += 1
-            total_frames += frames
-
-            print(
-                f"Game: {total_games:4}. Total frames: {total_frames:6}. "
-                + f"Time: {str(datetime.timedelta(seconds=int(time.time() - start_time)))}. Score: {score:6}. "
-                + f"Loss: {metrics_dict['Loss/total'].item():7.2f}. "
-                + f"Value mean, std: {np.mean(np.array(vals)):6.2f}, {np.std(np.array(vals)):5.2f}. "
-                + f"s/move: {time_per_move:5.3f}. s/batch: {time_per_batch:6.3f}."
-            )
-            with open(os.path.join(log_dir, "data.yaml"), "w+") as f:
-                yaml.dump({"steps": total_frames, "games": total_games}, f)
-
-        except KeyboardInterrupt:
-            breakpoint()
-    env.close()
+    # env.close()
     return scores
 
 

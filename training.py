@@ -1,3 +1,5 @@
+import os
+
 from functools import reduce
 from operator import add
 from random import randrange, random
@@ -180,7 +182,7 @@ class GameRecord:
                 actual_rollout_depth,
             )
 
-    def reanalyse(self, mcts, current_game):
+    def reanalyse(self, mu_net, current_game):
         # Reanalyse all except last observation for which there is no corresponding action
         for i in range(len(self.observations) - 1):
             if self.config["obs_type"] == "image":
@@ -195,6 +197,7 @@ class GameRecord:
         return self
 
 
+@ray.remote
 class ReplayBuffer:
     def __init__(self, config):
         self.config = config
@@ -211,6 +214,22 @@ class ReplayBuffer:
         self.reward_depth = config["reward_depth"]
         self.rollout_depth = config["rollout_depth"]
         self.priorities = []
+
+    def get_buffer_len(self):
+        return self.total_vals
+
+    def save_model(self, model, log_dir):
+        path = os.path.join(log_dir, "latest_model_dict.pt")
+        torch.save(model.state_dict(), path)
+
+    def load_model(self, log_dir, model, device=torch.device("cpu")):
+        path = os.path.join(log_dir, "latest_model_dict.pt")
+        if os.path.exists(path):
+            model.load_state_dict(torch.load(path, map_location=device))
+        else:
+            print(f"no dict to load at {path}")
+
+        return model
 
     def update_stats(self):
         # Maintain stats for the total length of all games in the buffer
