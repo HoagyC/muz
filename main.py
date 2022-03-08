@@ -75,7 +75,10 @@ def run(config):
     print(f"Training on device: {device}")
 
     player = Player.options(num_cpus=0.2).remote()
-    trainer = Trainer.options(num_cpus=0.2).remote()
+
+    train_cpus = 0 if torch.cuda.is_available() else 0.2
+    train_gpus = 1 if torch.cuda.is_available() else 0
+    trainer = Trainer.options(num_cpus=train_cpus, num_gpus=train_gpus).remote()
 
     player.play.remote(
         config=config,

@@ -197,7 +197,7 @@ class GameRecord:
         return self
 
 
-@ray.remote
+@ray.remote(max_restarts=-1, max_task_retries=3)
 class ReplayBuffer:
     def __init__(self, config):
         self.config = config
