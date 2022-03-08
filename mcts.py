@@ -16,7 +16,7 @@ from training import ReplayBuffer, GameRecord
 from models import scalar_to_support, support_to_scalar, normalize
 
 
-@ray.remote
+@ray.remote(max_restarts=-1)
 class Player:
     def __init__(self):
         pass
@@ -227,7 +227,7 @@ def search(
     return root_node
 
 
-@ray.remote
+@ray.remote(max_restarts=-1)
 class Trainer:
     def __init__(self):
         pass
