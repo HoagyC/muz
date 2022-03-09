@@ -252,7 +252,7 @@ class ReplayBuffer:
         self.buffer.append(game)
         self.update_stats()
 
-    def get_batch(self, batch_size=40, device=torch.device("cpu")):
+    def get_batch(self, batch_size=40):
         batch = []
 
         # Get a random list of points across the length of the buffer to take training examples
@@ -308,18 +308,14 @@ class ReplayBuffer:
             weights_l.append(weight)
             depths_l.append(depth)
 
-        images_t = torch.tensor(np.stack(images_l), dtype=torch.float32, device=device)
-        actions_t = torch.tensor(np.stack(actions_l), dtype=torch.int64, device=device)
-        target_values_t = torch.tensor(
-            np.stack(target_values_l), dtype=torch.float32, device=device
-        )
+        images_t = torch.tensor(np.stack(images_l), dtype=torch.float32)
+        actions_t = torch.tensor(np.stack(actions_l), dtype=torch.int64)
+        target_values_t = torch.tensor(np.stack(target_values_l), dtype=torch.float32)
         target_policies_t = torch.tensor(
-            np.stack(target_policies_l), dtype=torch.float32, device=device
+            np.stack(target_policies_l), dtype=torch.float32
         )
-        target_rewards_t = torch.tensor(
-            np.stack(target_rewards_l), dtype=torch.float32, device=device
-        )
-        weights_t = torch.tensor(weights_l, device=device)
+        target_rewards_t = torch.tensor(np.stack(target_rewards_l), dtype=torch.float32)
+        weights_t = torch.tensor(weights_l)
         weights_t = weights_t / max(weights_t)
         return (
             images_t,

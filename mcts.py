@@ -281,11 +281,14 @@ class Trainer:
                     target_policies,
                     weights,
                     depths,
-                ) = ray.get(
-                    memory.get_batch.remote(
-                        batch_size=config["batch_size"], device=device
-                    )
-                )
+                ) = ray.get(memory.get_batch.remote(batch_size=config["batch_size"]))
+
+                images = images.to(device=device)
+                actions = actions.to(device=device)
+                target_rewards = target_rewards.to(device=device)
+                target_values = target_values.to(device=device)
+                target_policies = target_policies.to(device=device)
+                weights = weights.to(device=device)
 
                 assert (
                     len(actions)
