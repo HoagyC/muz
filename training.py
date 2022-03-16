@@ -1,4 +1,6 @@
 import os
+import time
+import yaml
 
 from functools import reduce
 from operator import add
@@ -7,6 +9,9 @@ from random import randrange, random
 import numpy as np
 import torch
 import ray
+
+from utils import load_model
+from mcts import search, MinMax
 
 
 class GameRecord:
@@ -182,17 +187,23 @@ class GameRecord:
                 actual_rollout_depth,
             )
 
-    def reanalyse(self, mu_net, current_game):
+    def reanalyse(self, mu_net, log_dir, minmax, current_game):
         # Reanalyse all except last observation for which there is no corresponding action
         for i in range(len(self.observations) - 1):
             if self.config["obs_type"] == "image":
                 obs = self.get_last_n(pos=i)
             else:
                 obs = self.observations[i]
-            new_root = mcts.search(self.config["n_simulations"], obs)
+            new_root = search(
+                config=self.config,
+                mu_net=mu_net,
+                current_frame=obs,
+                minmax=minmax,
+                log_dir=log_dir,
+                device=torch.device("cpu"),
+            )
             self.values[i] = new_root.average_val
-            self.add_priorities(n_steps=mcts.config["reward_depth"], reanalysing=True)
-
+            self.add_priorities(n_steps=self.config["reward_depth"], reanalysing=True)
         self.last_analysed = current_game
         return self
 
@@ -214,9 +225,31 @@ class ReplayBuffer:
         self.reward_depth = config["reward_depth"]
         self.rollout_depth = config["rollout_depth"]
         self.priorities = []
+        self.minmax = MinMax()
+
+    def get_buffer(self):
+        return self.buffer
+
+    def add_priorities(self, ndx, reanalysing=False):
+        self.buffer[ndx].add_priorities(
+            n_steps=self.config["reward_depth"], reanalysing=reanalysing
+        )
+
+    def update_vals(self, ndx, vals, current_game):
+        self.buffer[ndx].values = vals
+        self.buffer[ndx].last_analysed = current_game
+
+    def get_buffer_ndx(self, ndx):
+        return self.buffer[ndx]
 
     def get_buffer_len(self):
-        return self.total_vals
+        return len(self.buffer)
+
+    def get_minmax(self):
+        return self.minmax
+
+    def reanalyse(self, ndx, mu_net, log_dir, current_game):
+        self.buffer[ndx].reanalyse(mu_net, log_dir, self.minmax, current_game)
 
     def save_model(self, model, log_dir):
         path = os.path.join(log_dir, "latest_model_dict.pt")
@@ -340,17 +373,64 @@ class ReplayBuffer:
                 return i - 1, val - self.game_starts_list[i - 1]
         return len(self.buffer) - 1, val - self.game_starts_list[-1]
 
-    def reanalyse(self, mcts, current_game, n):
-        p = np.array([current_game - x.last_analysed for x in self.buffer]).astype(
-            np.float32
-        )
-        p /= sum(p)
-        ndxs = np.random.choice(range(len(self.buffer)), size=n, p=p)
-        for i in ndxs:
-            self.buffer[i].reanalyse(mcts, current_game)
-
 
 @ray.remote
 class Reanalyser:
-    def __init__(self):
-        pass
+    def __init__(self, config, log_dir, device=torch.device("cpu")):
+        self.device = device
+        self.config = config
+        self.log_dir = log_dir
+
+    def reanalyse(self, mu_net, memory):
+        while True:
+            if "latest_model_dict.pt" in os.listdir(self.log_dir):
+                mu_net = load_model(self.log_dir, mu_net, device=self.device)
+
+            while True:
+                buffer_len = ray.get(memory.get_buffer_len.remote())
+                train_stats = yaml.safe_load(
+                    open(os.path.join(self.log_dir, "data.yaml"), "r")
+                )
+                current_game = train_stats["games"]
+                if buffer_len >= 1 and current_game >= 2:
+                    break
+
+                time.sleep(1)
+
+            mu_net.train()
+            mu_net = mu_net.to(self.device)
+
+            p = np.array(
+                [
+                    current_game - x.last_analysed
+                    for x in ray.get(memory.get_buffer.remote())[:buffer_len]
+                ]
+            ).astype(np.float32)
+            if sum(p) > 0:
+                p /= sum(p)
+                ndx = np.random.choice(range(buffer_len), p=p)
+                game_rec = ray.get(memory.get_buffer_ndx.remote(ndx))
+                minmax = ray.get(memory.get_minmax.remote())
+
+                vals = game_rec.values
+
+                for i in range(len(game_rec.observations) - 1):
+                    if self.config["obs_type"] == "image":
+                        obs = game_rec.get_last_n(pos=i)
+                    else:
+                        obs = game_rec.observations[i]
+                    new_root = search(
+                        config=self.config,
+                        mu_net=mu_net,
+                        current_frame=obs,
+                        minmax=minmax,
+                        log_dir=self.log_dir,
+                        device=torch.device("cpu"),
+                    )
+                    vals[i] = new_root.average_val
+
+                memory.update_vals.remote(ndx=ndx, vals=vals, current_game=current_game)
+                memory.add_priorities.remote(ndx=ndx, reanalysing=True)
+                print(f"Reanalysed game {ndx}")
+            else:
+                time.sleep(5)

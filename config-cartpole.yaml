@@ -13,7 +13,7 @@ discount: 0.997
 n_batches: 100
 batch_size: 30
 rollout_depth: 5
-reward_depth: 80
+reward_depth: 30
 buffer_size: 50
 consistency_loss: True
 consistency_weight: 0.5
@@ -23,7 +23,7 @@ grad_clip: 0 # 0 indicates no clipping
 prior_weight: 1
 
 # Replay params
-priority_replay: False
+priority_replay: True
 priority_alpha: 1
 priority_beta: 1
 

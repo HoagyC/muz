@@ -11,9 +11,10 @@ import ray
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
-from mcts import Player, Trainer
+from mcts import Trainer
+from player import Player
 from models import MuZeroCartNet, MuZeroAtariNet
-from training import GameRecord, ReplayBuffer
+from training import GameRecord, ReplayBuffer, Reanalyser
 
 
 def run(config):
@@ -50,6 +51,13 @@ def run(config):
     print(f"Logging to '{config['log_name']}'")
 
     log_dir = os.path.join(config["log_dir"], config["log_name"])
+
+    if not os.path.exists(log_dir):
+        os.mkdir(log_dir)
+    if "data.yaml" not in os.listdir(log_dir):
+        init_dict = {"games": 0, "steps": 0}
+        yaml.dump(init_dict, open(os.path.join(log_dir, "data.yaml"), "w+"))
+
     tb_writer = SummaryWriter(log_dir=log_dir)
 
     memory = ReplayBuffer.options(num_cpus=0.1).remote(config)
@@ -61,20 +69,13 @@ def run(config):
     # and the value which is the average value as calculated by the MCTS
     # can also store the reanalysed predicted root values
 
-    if os.path.exists(os.path.join(log_dir, "data.yaml")):
-        data = yaml.safe_load(open(os.path.join(log_dir, "data.yaml"), "r"))
-        total_games = data["games"]
-        total_frames = data["steps"]
-    else:
-        total_games = 0
-        total_frames = 0
     start_time = time.time()
     scores = []
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(f"Training on device: {device}")
 
-    player = Player.options(num_cpus=0.2).remote()
+    player = Player.options(num_cpus=0.2).remote(log_dir=log_dir)
 
     train_cpus = 0 if torch.cuda.is_available() else 0.2
     train_gpus = 1 if torch.cuda.is_available() else 0
@@ -97,32 +98,36 @@ def run(config):
         log_dir=log_dir,
     )
 
+    if config["reanalyse"]:
+        analyser = Reanalyser.options(num_cpus=0.1).remote(
+            config=config, log_dir=log_dir
+        )
+        analyser.reanalyse.remote(mu_net=muzero_network, memory=memory)
+
     while True:
         time.sleep(10)
 
-    #     metrics_dict = train(memory, config["n_batches"], device=device)
-    #     time_per_batch = (time.time() - train_start_time) / config["n_batches"]
+        # metrics_dict = train(memory, config["n_batches"], device=device)
+        # time_per_batch = (time.time() - train_start_time) / config["n_batches"]
 
-    #     for key, val in metrics_dict.items():
-    #         tb_writer.add_scalar(key, val, total_games)
+        # for key, val in metrics_dict.items():
+        #     tb_writer.add_scalar(key, val, total_games)
 
-    #     tb_writer.add_scalar("Score", score, total_games)
+        # tb_writer.add_scalar("Score", score, total_games)
 
-    #     scores.append(score)
-    #     total_games += 1
-    #     total_frames += frames
+        # scores.append(score)
+        # total_games += 1
+        # total_frames += frames
 
-    #     print(
-    #         f"Game: {total_games:4}. Total frames: {total_frames:6}. "
-    #         + f"Time: {str(datetime.timedelta(seconds=int(time.time() - start_time)))}. Score: {score:6}. "
-    #         + f"Loss: {metrics_dict['Loss/total'].item():7.2f}. "
-    #         + f"Value mean, std: {np.mean(np.array(vals)):6.2f}, {np.std(np.array(vals)):5.2f}. "
-    #         + f"s/move: {time_per_move:5.3f}. s/batch: {time_per_batch:6.3f}."
-    #     )
-    #     with open(os.path.join(log_dir, "data.yaml"), "w+") as f:
-    #         yaml.dump({"steps": total_frames, "games": total_games}, f)
+        # print(
+        #     f"Game: {total_games:4}. Total frames: {total_frames:6}. "
+        #     + f"Time: {str(datetime.timedelta(seconds=int(time.time() - start_time)))}. Score: {score:6}. "
+        #     + f"Loss: {metrics_dict['Loss/total'].item():7.2f}. "
+        #     + f"Value mean, std: {np.mean(np.array(vals)):6.2f}, {np.std(np.array(vals)):5.2f}. "
+        #     + f"s/move: {time_per_move:5.3f}. s/batch: {time_per_batch:6.3f}."
+        # )
 
-    # env.close()
+    env.close()
     return scores
 
 
