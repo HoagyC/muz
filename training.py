@@ -83,6 +83,11 @@ class GameRecord:
         return last_n
 
     def add_priorities(self, n_steps=5, reanalysing=False):
+        # Add this in case trainer has restarted before adding priorities
+        if len(self.values) != len(self.priorities):
+            self.priorities = []
+            reanalysing = False
+
         for i, r in enumerate(self.values):
             if i + n_steps < len(self.values):
                 value_target = self.values[i + n_steps]
@@ -209,12 +214,18 @@ class GameRecord:
 
 
 @ray.remote(max_restarts=-1, max_task_retries=3)
-class ReplayBuffer:
-    def __init__(self, config):
+class Memory:
+    def __init__(self, config, log_dir):
         self.config = config
+        self.log_dir = log_dir
         self.size = config["buffer_size"]  # How many game records to store
         self.buffer = []  # List of stored game records
+        self.buffer_ndxs = []
         self.total_vals = 0  # How many total steps are stored
+
+        data = yaml.safe_load(open(os.path.join(self.log_dir, "data.yaml"), "r"))
+        self.total_games = data["games"]
+        self.total_frames = data["steps"]
 
         self.prioritized_replay = config["priority_replay"]
         self.priority_alpha = config["priority_alpha"]
@@ -227,29 +238,50 @@ class ReplayBuffer:
         self.priorities = []
         self.minmax = MinMax()
 
+    def get_data(self):
+        return {"games": self.total_games, "frames": self.total_frames}
+
     def get_buffer(self):
         return self.buffer
 
-    def add_priorities(self, ndx, reanalysing=False):
-        self.buffer[ndx].add_priorities(
-            n_steps=self.config["reward_depth"], reanalysing=reanalysing
-        )
+    def get_buffer_ndxs(self):
+        return self.buffer_ndxs
 
-    def update_vals(self, ndx, vals, current_game):
-        self.buffer[ndx].values = vals
-        self.buffer[ndx].last_analysed = current_game
+    def add_priorities(self, ndx, reanalysing=False):
+        try:
+            buf_ndx = self.buffer_ndxs.index(ndx)
+            self.buffer[buf_ndx].add_priorities(
+                n_steps=self.config["reward_depth"], reanalysing=reanalysing
+            )
+        except ValueError:
+            print(f"No buffer item with index {ndx}")
+
+    def get_reanalyse_probabilities(self):
+        p = np.array([self.total_games - x.last_analysed for x in self.buffer]).astype(
+            np.float32
+        )
+        if sum(p) > 0:
+            return p / sum(p)
+        else:
+            return np.array([])
+
+    def update_vals(self, ndx, vals):
+        try:
+            buf_ndx = self.buffer_ndxs.index(ndx)
+            self.buffer[buf_ndx].values = vals
+            self.buffer[buf_ndx].last_analysed = self.total_games
+        except ValueError:
+            print(f"No buffer item with index {ndx}")
 
     def get_buffer_ndx(self, ndx):
-        return self.buffer[ndx]
+        buf_ndx = self.buffer_ndxs.index(ndx)
+        return self.buffer[buf_ndx]
 
     def get_buffer_len(self):
         return len(self.buffer)
 
     def get_minmax(self):
         return self.minmax
-
-    def reanalyse(self, ndx, mu_net, log_dir, current_game):
-        self.buffer[ndx].reanalyse(mu_net, log_dir, self.minmax, current_game)
 
     def save_model(self, model, log_dir):
         path = os.path.join(log_dir, "latest_model_dict.pt")
@@ -277,13 +309,17 @@ class ReplayBuffer:
         sum_priorities = sum(self.priorities)
         self.priorities = [p / sum_priorities for p in self.priorities]
 
-    def save_game(self, game):
+    def save_game(self, game, n_frames):
         # If reached the max size, remove the oldest GameRecord, and update stats accordingly
         if len(self.buffer) >= self.size:
             self.buffer.pop(0)
+            self.buffer_ndxs.pop(0)
 
         self.buffer.append(game)
+        self.buffer_ndxs.append(self.total_games)
         self.update_stats()
+        self.total_games += 1
+        self.total_frames += n_frames
 
     def get_batch(self, batch_size=40):
         batch = []
@@ -295,9 +331,12 @@ class ReplayBuffer:
         else:
             probabilities = None
 
+        if probabilities and len(probabilities) != self.total_vals:
+            breakpoint()
         start_vals = np.random.choice(
             list(range(self.total_vals)), size=batch_size, p=probabilities
         )
+
         images_l = []
         actions_l = []
         target_values_l = []
@@ -340,16 +379,22 @@ class ReplayBuffer:
 
             weights_l.append(weight)
             depths_l.append(depth)
-
-        images_t = torch.tensor(np.stack(images_l), dtype=torch.float32)
-        actions_t = torch.tensor(np.stack(actions_l), dtype=torch.int64)
-        target_values_t = torch.tensor(np.stack(target_values_l), dtype=torch.float32)
-        target_policies_t = torch.tensor(
-            np.stack(target_policies_l), dtype=torch.float32
-        )
-        target_rewards_t = torch.tensor(np.stack(target_rewards_l), dtype=torch.float32)
-        weights_t = torch.tensor(weights_l)
-        weights_t = weights_t / max(weights_t)
+        try:
+            images_t = torch.tensor(np.stack(images_l), dtype=torch.float32)
+            actions_t = torch.tensor(np.stack(actions_l), dtype=torch.int64)
+            target_values_t = torch.tensor(
+                np.stack(target_values_l), dtype=torch.float32
+            )
+            target_policies_t = torch.tensor(
+                np.stack(target_policies_l), dtype=torch.float32
+            )
+            target_rewards_t = torch.tensor(
+                np.stack(target_rewards_l), dtype=torch.float32
+            )
+            weights_t = torch.tensor(weights_l)
+            weights_t = weights_t / max(weights_t)
+        except:
+            breakpoint()
         return (
             images_t,
             actions_t,
@@ -386,6 +431,7 @@ class Reanalyser:
             if "latest_model_dict.pt" in os.listdir(self.log_dir):
                 mu_net = load_model(self.log_dir, mu_net, device=self.device)
 
+            # No point reanalysing until there are multiple games in the history
             while True:
                 buffer_len = ray.get(memory.get_buffer_len.remote())
                 train_stats = yaml.safe_load(
@@ -400,15 +446,11 @@ class Reanalyser:
             mu_net.train()
             mu_net = mu_net.to(self.device)
 
-            p = np.array(
-                [
-                    current_game - x.last_analysed
-                    for x in ray.get(memory.get_buffer.remote())[:buffer_len]
-                ]
-            ).astype(np.float32)
-            if sum(p) > 0:
-                p /= sum(p)
-                ndx = np.random.choice(range(buffer_len), p=p)
+            p = ray.get(memory.get_reanalyse_probabilities.remote())
+
+            if len(p) > 0:
+                ndxs = ray.get(memory.get_buffer_ndxs.remote())
+                ndx = np.random.choice(ndxs, p=p)
                 game_rec = ray.get(memory.get_buffer_ndx.remote(ndx))
                 minmax = ray.get(memory.get_minmax.remote())
 
@@ -429,7 +471,7 @@ class Reanalyser:
                     )
                     vals[i] = new_root.average_val
 
-                memory.update_vals.remote(ndx=ndx, vals=vals, current_game=current_game)
+                memory.update_vals.remote(ndx=ndx, vals=vals)
                 memory.add_priorities.remote(ndx=ndx, reanalysing=True)
                 print(f"Reanalysed game {ndx}")
             else:

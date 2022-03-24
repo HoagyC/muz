@@ -24,20 +24,16 @@ from mcts import search
 class Player:
     def __init__(self, log_dir):
         self.log_dir = log_dir
-        if os.path.exists(os.path.join(self.log_dir, "data.yaml")):
-            data = yaml.safe_load(open(os.path.join(self.log_dir, "data.yaml"), "r"))
-            self.total_games = data["games"]
-            self.total_frames = data["steps"]
-        else:
-            self.total_games = 0
-            self.total_frames = 0
 
     def play(self, config, mu_net, device, log_dir, memory, env):
-        total_games = 0
-        total_frames = 0
         minmax = ray.get(memory.get_minmax.remote())
         start_time = time.time()
+
         while True:
+            data = ray.get(memory.get_data.remote())
+            self.total_games = data["games"]
+            self.total_frames = data["frames"]
+
             if "latest_model_dict.pt" in os.listdir(log_dir):
                 mu_net = ray.get(
                     memory.load_model.remote(log_dir, mu_net, device=device)
@@ -65,12 +61,14 @@ class Player:
             if config["temp_time"] <= 0:
                 temperature = 0
             else:
-                temperature = config["temp_time"] / (total_games + config["temp_time"])
+                temperature = config["temp_time"] / (
+                    self.total_games + config["temp_time"]
+                )
             score = 0
 
-            if total_games % 10 == 0 and total_games > 0:
+            if self.total_games % 10 == 0 and self.total_games > 0:
                 learning_rate = config["learning_rate"] * (
-                    config["learning_rate_decay"] ** total_games // 10
+                    config["learning_rate_decay"] ** self.total_games // 10
                 )
                 mu_net.init_optim(learning_rate)
 
@@ -114,10 +112,7 @@ class Player:
 
             game_record.add_priorities(n_steps=config["reward_depth"])
 
-            memory.save_game.remote(game_record)
-
-            self.total_games += 1
-            self.total_frames += frames
+            memory.save_game.remote(game_record, frames)
 
             print(
                 f"Game: {self.total_games:4}. Total frames: {self.total_frames:6}. "

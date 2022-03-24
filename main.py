@@ -14,7 +14,7 @@ from torch.utils.tensorboard import SummaryWriter
 from mcts import Trainer
 from player import Player
 from models import MuZeroCartNet, MuZeroAtariNet
-from training import GameRecord, ReplayBuffer, Reanalyser
+from training import GameRecord, Memory, Reanalyser
 
 
 def run(config):
@@ -60,7 +60,7 @@ def run(config):
 
     tb_writer = SummaryWriter(log_dir=log_dir)
 
-    memory = ReplayBuffer.options(num_cpus=0.1).remote(config)
+    memory = Memory.options(num_cpus=0.1).remote(config, log_dir)
     # open muz implementation uses a GameHistory class
     # with observation_history, action_history, reward_history
     # to_play which is who is to play in case it's a multiplayer, turn-based game
