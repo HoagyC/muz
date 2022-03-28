@@ -115,7 +115,7 @@ class Player:
             memory.save_game.remote(game_record, frames)
 
             print(
-                f"Game: {self.total_games:4}. Total frames: {self.total_frames:6}. "
+                f"Game: {self.total_games + 1:4}. Total frames: {self.total_frames + frames:6}. "
                 + f"Time: {str(datetime.timedelta(seconds=int(time.time() - start_time)))}. Score: {score:6}. "
                 + f"Value mean, std: {np.mean(np.array(vals)):6.2f}, {np.std(np.array(vals)):5.2f}. "
                 + f"s/move: {time_per_move:5.3f}."
