@@ -330,7 +330,7 @@ class Trainer:
                     total_consistency_loss * config["consistency_weight"]
                 ),
             }
-            memory.save_model.remote(mu_net, log_dir)
+            memory.save_model.remote(mu_net.to(device=torch.device("cpu")), log_dir)
             print(f'Trained {config["n_batches"]} of size {config["batch_size"]}')
 
         return metrics_dict
