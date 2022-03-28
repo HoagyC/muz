@@ -284,6 +284,7 @@ class Memory:
         return self.minmax
 
     def save_model(self, model, log_dir):
+        model = model.to(device=torch.device("cpu"))
         path = os.path.join(log_dir, "latest_model_dict.pt")
         torch.save(model.state_dict(), path)
 
