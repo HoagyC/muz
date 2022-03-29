@@ -160,14 +160,15 @@ class Trainer:
                 total_value_loss,
                 total_consistency_loss,
             ) = (0, 0, 0, 0, 0)
-
+            print('started train loop')
             val_diff = 0
             if "latest_model_dict.pt" in os.listdir(log_dir):
-                mu_net = load_model(log_dir, mu_net, device=device)
+                mu_net = load_model(log_dir, mu_net)
+            print(f'got model of type {next(mu_net.parameters()).device}'')
             mu_net.train()
             mu_net = mu_net.to(device)
-
-            for _ in range(config["n_batches"]):
+            print(f'model turned to device {device}')
+            for i in range(config["n_batches"]):
                 (
                     batch_policy_loss,
                     batch_reward_loss,
@@ -183,7 +184,8 @@ class Trainer:
                     weights,
                     depths,
                 ) = ray.get(memory.get_batch.remote(batch_size=config["batch_size"]))
-
+                if i == 0:
+                    print('got batch')
                 images = images.to(device=device)
                 actions = actions.to(device=device)
                 target_rewards = target_rewards.to(device=device)
@@ -330,6 +332,7 @@ class Trainer:
                     total_consistency_loss * config["consistency_weight"]
                 ),
             }
+            print('finished train loop, about to save')
             memory.save_model.remote(mu_net.to(device=torch.device("cpu")), log_dir)
             print(f'Trained {config["n_batches"]} of size {config["batch_size"]}')
 
