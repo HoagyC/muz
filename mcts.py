@@ -150,6 +150,9 @@ class Trainer:
         is trained - is it akin to training through a recurrent neural network with the prediction function
         as a head
         """
+        next_batch = None
+        total_batches = 0
+
         while True:
             while ray.get(memory.get_buffer_len.remote()) == 0:
                 time.sleep(1)
@@ -160,168 +163,164 @@ class Trainer:
                 total_value_loss,
                 total_consistency_loss,
             ) = (0, 0, 0, 0, 0)
-            print("started train loop")
+            if not next_batch:
+                next_batch = memory.get_batch.remote(batch_size=config["batch_size"])
+
             val_diff = 0
             if "latest_model_dict.pt" in os.listdir(log_dir):
                 mu_net = load_model(log_dir, mu_net)
-            print(f"got model of type {next(mu_net.parameters()).device}")
             mu_net.train()
             mu_net = mu_net.to(device)
-            print(f"model turned to device {device}")
-            for i in range(config["n_batches"]):
-                (
-                    batch_policy_loss,
-                    batch_reward_loss,
-                    batch_value_loss,
-                    batch_consistency_loss,
-                ) = (0, 0, 0, 0)
-                (
-                    images,
-                    actions,
-                    target_values,
-                    target_rewards,
-                    target_policies,
-                    weights,
-                    depths,
-                ) = ray.get(memory.get_batch.remote(batch_size=config["batch_size"]))
-                if i == 0:
-                    print("got batch")
-                images = images.to(device=device)
-                actions = actions.to(device=device)
-                target_rewards = target_rewards.to(device=device)
-                target_values = target_values.to(device=device)
-                target_policies = target_policies.to(device=device)
-                weights = weights.to(device=device)
+            (
+                batch_policy_loss,
+                batch_reward_loss,
+                batch_value_loss,
+                batch_consistency_loss,
+            ) = (0, 0, 0, 0)
 
-                assert (
-                    len(actions)
-                    == len(target_policies)
-                    == len(target_rewards)
-                    == len(target_values)
-                    == len(images)
+            (
+                images,
+                actions,
+                target_values,
+                target_rewards,
+                target_policies,
+                weights,
+                depths,
+            ) = ray.get(next_batch)
+            next_batch = memory.get_batch.remote(batch_size=config["batch_size"])
+
+            images = images.to(device=device)
+            actions = actions.to(device=device)
+            target_rewards = target_rewards.to(device=device)
+            target_values = target_values.to(device=device)
+            target_policies = target_policies.to(device=device)
+            weights = weights.to(device=device)
+
+            assert (
+                len(actions)
+                == len(target_policies)
+                == len(target_rewards)
+                == len(target_values)
+                == len(images)
+            )
+            assert config["rollout_depth"] == actions.shape[1]
+
+            # This is how far we will deny the use of the representation function,
+            # requiring the dynamics function to learn to represent the s, a -> s function
+            # All batch tensors are index first by batch x rollout
+            init_images = images[:, 0]
+
+            latents = mu_net.represent(init_images)
+            for i in range(config["rollout_depth"]):
+                screen_t = torch.tensor(depths) > i
+                if torch.sum(screen_t) < 1:
+                    continue
+
+                # We must do tthis sequentially, as the input to the dynamics function requires the output
+                # from the previous dynamics function
+
+                target_value_stepi = target_values[:, i]
+                target_reward_stepi = target_rewards[:, i]
+                target_policy_stepi = target_policies[:, i]
+
+                if config["consistency_loss"]:
+                    target_latents = mu_net.represent(images[:, i]).detach()
+
+                one_hot_actions = nn.functional.one_hot(
+                    actions[:, i],
+                    num_classes=mu_net.action_size,
+                ).to(device=device)
+
+                pred_policy_logits, pred_value_logits = mu_net.predict(latents)
+
+                new_latents, pred_reward_logits = mu_net.dynamics(
+                    latents, one_hot_actions
                 )
-                assert config["rollout_depth"] == actions.shape[1]
 
-                # This is how far we will deny the use of the representation function,
-                # requiring the dynamics function to learn to represent the s, a -> s function
-                # All batch tensors are index first by batch x rollout
-                init_images = images[:, 0]
+                # We scale down the gradient, I believe so that the gradient at the base of the unrolled
+                # network converges to a maximum rather than increasing linearly with depth
+                new_latents.register_hook(lambda grad: grad * 0.5)
 
-                latents = mu_net.represent(init_images)
-                for i in range(config["rollout_depth"]):
-                    screen_t = torch.tensor(depths) > i
-                    if torch.sum(screen_t) < 1:
-                        continue
+                target_reward_sup_i = scalar_to_support(
+                    target_reward_stepi, half_width=config["support_width"]
+                )
 
-                    # We must do tthis sequentially, as the input to the dynamics function requires the output
-                    # from the previous dynamics function
+                target_value_sup_i = scalar_to_support(
+                    target_value_stepi, half_width=config["support_width"]
+                )
 
-                    target_value_stepi = target_values[:, i]
-                    target_reward_stepi = target_rewards[:, i]
-                    target_policy_stepi = target_policies[:, i]
+                # Cutting off cases where there's not enough data for a full rollout
 
-                    if config["consistency_loss"]:
-                        target_latents = mu_net.represent(images[:, i]).detach()
+                # The muzero paper calculates the loss as the squared difference between scalars
+                # but CrossEntropyLoss is used here for a more stable value loss when large values are encountered
+                value_loss = mu_net.value_loss(
+                    pred_value_logits[screen_t], target_value_sup_i[screen_t]
+                )
 
-                    one_hot_actions = nn.functional.one_hot(
-                        actions[:, i],
-                        num_classes=mu_net.action_size,
-                    ).to(device=device)
-
-                    pred_policy_logits, pred_value_logits = mu_net.predict(latents)
-
-                    new_latents, pred_reward_logits = mu_net.dynamics(
-                        latents, one_hot_actions
+                val_diff += sum(
+                    target_value_stepi[screen_t]
+                    - support_to_scalar(
+                        torch.softmax(pred_value_logits[screen_t], dim=1)
                     )
+                )
 
-                    # We scale down the gradient, I believe so that the gradient at the base of the unrolled
-                    # network converges to a maximum rather than increasing linearly with depth
-                    new_latents.register_hook(lambda grad: grad * 0.5)
+                reward_loss = mu_net.reward_loss(
+                    pred_reward_logits[screen_t], target_reward_sup_i[screen_t]
+                )
+                policy_loss = mu_net.policy_loss(
+                    pred_policy_logits[screen_t], target_policy_stepi[screen_t]
+                )
 
-                    target_reward_sup_i = scalar_to_support(
-                        target_reward_stepi, half_width=config["support_width"]
+                if config["consistency_loss"]:
+                    consistency_loss = mu_net.consistency_loss(
+                        latents[screen_t], target_latents[screen_t]
                     )
+                else:
+                    consistency_loss = 0
 
-                    target_value_sup_i = scalar_to_support(
-                        target_value_stepi, half_width=config["support_width"]
-                    )
+                batch_policy_loss += (policy_loss * weights[screen_t]).sum()
+                batch_value_loss += (value_loss * weights[screen_t]).sum()
+                batch_reward_loss += (reward_loss * weights[screen_t]).sum()
+                batch_consistency_loss += (consistency_loss * weights[screen_t]).sum()
 
-                    # Cutting off cases where there's not enough data for a full rollout
+                latents = new_latents
 
-                    # The muzero paper calculates the loss as the squared difference between scalars
-                    # but CrossEntropyLoss is used here for a more stable value loss when large values are encountered
-                    value_loss = mu_net.value_loss(
-                        pred_value_logits[screen_t], target_value_sup_i[screen_t]
-                    )
+                # print(
+                #     target_value_stepi,
+                #     pred_value_logits[screen_t],
+                #     torch.softmax(pred_value_logits[screen_t], dim=1),
+                #     support_to_scalar(
+                #         torch.softmax(pred_value_logits[screen_t], dim=1)
+                #     ),
+                #     target_value_sup_i,
+                # )
+            # Aggregate the losses to a single measure
+            batch_loss = (
+                batch_policy_loss
+                + batch_reward_loss
+                + (batch_value_loss * config["val_weight"])
+                + (batch_consistency_loss * config["consistency_weight"])
+            ) / config["batch_size"]
 
-                    val_diff += sum(
-                        target_value_stepi[screen_t]
-                        - support_to_scalar(
-                            torch.softmax(pred_value_logits[screen_t], dim=1)
-                        )
-                    )
+            batch_loss = batch_loss.mean()
 
-                    reward_loss = mu_net.reward_loss(
-                        pred_reward_logits[screen_t], target_reward_sup_i[screen_t]
-                    )
-                    policy_loss = mu_net.policy_loss(
-                        pred_policy_logits[screen_t], target_policy_stepi[screen_t]
-                    )
+            if config["debug"]:
+                print(
+                    f"v {batch_value_loss}, r {batch_reward_loss}, p {batch_policy_loss}, c {batch_consistency_loss}"
+                )
 
-                    if config["consistency_loss"]:
-                        consistency_loss = mu_net.consistency_loss(
-                            latents[screen_t], target_latents[screen_t]
-                        )
-                    else:
-                        consistency_loss = 0
+            # Zero the gradients in the computation graph and then propagate the loss back through it
+            mu_net.optimizer.zero_grad()
+            batch_loss.backward()
+            if config["grad_clip"] != 0:
+                torch.nn.utils.clip_grad_norm_(mu_net.parameters(), config["grad_clip"])
+            mu_net.optimizer.step()
 
-                    batch_policy_loss += (policy_loss * weights[screen_t]).sum()
-                    batch_value_loss += (value_loss * weights[screen_t]).sum()
-                    batch_reward_loss += (reward_loss * weights[screen_t]).sum()
-                    batch_consistency_loss += (
-                        consistency_loss * weights[screen_t]
-                    ).sum()
-
-                    latents = new_latents
-
-                    # print(
-                    #     target_value_stepi,
-                    #     pred_value_logits[screen_t],
-                    #     torch.softmax(pred_value_logits[screen_t], dim=1),
-                    #     support_to_scalar(
-                    #         torch.softmax(pred_value_logits[screen_t], dim=1)
-                    #     ),
-                    #     target_value_sup_i,
-                    # )
-                # Aggregate the losses to a single measure
-                batch_loss = (
-                    batch_policy_loss
-                    + batch_reward_loss
-                    + (batch_value_loss * config["val_weight"])
-                    + (batch_consistency_loss * config["consistency_weight"])
-                ) / config["batch_size"]
-
-                batch_loss = batch_loss.mean()
-
-                if config["debug"]:
-                    print(
-                        f"v {batch_value_loss}, r {batch_reward_loss}, p {batch_policy_loss}, c {batch_consistency_loss}"
-                    )
-
-                # Zero the gradients in the computation graph and then propagate the loss back through it
-                mu_net.optimizer.zero_grad()
-                batch_loss.backward()
-                if config["grad_clip"] != 0:
-                    torch.nn.utils.clip_grad_norm_(
-                        mu_net.parameters(), config["grad_clip"]
-                    )
-                mu_net.optimizer.step()
-
-                total_loss += batch_loss
-                total_value_loss += batch_value_loss
-                total_policy_loss += batch_policy_loss
-                total_reward_loss += batch_reward_loss
-                total_consistency_loss += batch_consistency_loss
+            total_loss += batch_loss
+            total_value_loss += batch_value_loss
+            total_policy_loss += batch_policy_loss
+            total_reward_loss += batch_reward_loss
+            total_consistency_loss += batch_consistency_loss
 
             metrics_dict = {
                 "Loss/total": total_loss,
@@ -332,9 +331,13 @@ class Trainer:
                     total_consistency_loss * config["consistency_weight"]
                 ),
             }
-            print("finished train loop, about to save")
+            st = time.time()
             memory.save_model.remote(mu_net.to(device=torch.device("cpu")), log_dir)
-            print(f'Trained {config["n_batches"]} of size {config["batch_size"]}')
+            total_batches += 1
+            if total_batches % 100 == 0:
+                print(
+                    f"Completed {total_batches} total batches of size {config['batch_size']}"
+                )
 
         return metrics_dict
 
