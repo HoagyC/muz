@@ -41,4 +41,4 @@ print_simple: True
 max_games: 1000
 temp_time: 20
 
-max_frames: 1000
+max_frames: 1000  

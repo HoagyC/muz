@@ -16,7 +16,6 @@ from torch.utils.tensorboard import SummaryWriter
 
 from training import GameRecord
 from models import scalar_to_support, support_to_scalar, normalize
-from utils import load_model
 from mcts import search
 
 
@@ -113,7 +112,6 @@ class Player:
             game_record.add_priorities(n_steps=config["reward_depth"])
 
             memory.save_game.remote(game_record, frames)
-
             print(
                 f"Game: {self.total_games + 1:4}. Total frames: {self.total_frames + frames:6}. "
                 + f"Time: {str(datetime.timedelta(seconds=int(time.time() - start_time)))}. Score: {score:6}. "

@@ -13,7 +13,7 @@ discount: 0.997
 n_batches: 60
 batch_size: 5
 rollout_depth: 5
-reward_depth: 100
+reward_depth: 5
 buffer_size: 10
 consistency_loss: True
 consistency_weight: 0.5
@@ -36,7 +36,7 @@ n_simulations: 20
 
 # Setup params  
 log_dir: "runs"
-log_name: "None"
+log_name: "last"
 debug: False
 render: True
 print_simple: True

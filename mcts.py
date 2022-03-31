@@ -14,7 +14,6 @@ from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 
 from models import scalar_to_support, support_to_scalar, normalize
-from utils import load_model
 
 
 def search(
@@ -168,7 +167,7 @@ class Trainer:
 
             val_diff = 0
             if "latest_model_dict.pt" in os.listdir(log_dir):
-                mu_net = load_model(log_dir, mu_net)
+                mu_net = ray.get(memory.load_model.remote(log_dir, mu_net))
             mu_net.train()
             mu_net = mu_net.to(device)
             (
@@ -350,11 +349,6 @@ def backpropagate(search_list, value, minmax, discount):
         node.update_val(value)
         value = node.reward + (value * discount)
         minmax.update(value)
-
-
-def save_model(model, log_dir):
-    path = os.path.join(log_dir, "latest_model_dict.pt")
-    torch.save(model.state_dict(), path)
 
 
 class TreeNode:
