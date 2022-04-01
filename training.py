@@ -378,22 +378,17 @@ class Memory:
 
             weights_l.append(weight)
             depths_l.append(depth)
-        try:
-            images_t = torch.tensor(np.stack(images_l), dtype=torch.float32)
-            actions_t = torch.tensor(np.stack(actions_l), dtype=torch.int64)
-            target_values_t = torch.tensor(
-                np.stack(target_values_l), dtype=torch.float32
-            )
-            target_policies_t = torch.tensor(
-                np.stack(target_policies_l), dtype=torch.float32
-            )
-            target_rewards_t = torch.tensor(
-                np.stack(target_rewards_l), dtype=torch.float32
-            )
-            weights_t = torch.tensor(weights_l)
-            weights_t = weights_t / max(weights_t)
-        except:
-            breakpoint()
+
+        images_t = torch.tensor(np.stack(images_l), dtype=torch.float32)
+        actions_t = torch.tensor(np.stack(actions_l), dtype=torch.int64)
+        target_values_t = torch.tensor(np.stack(target_values_l), dtype=torch.float32)
+        target_policies_t = torch.tensor(
+            np.stack(target_policies_l), dtype=torch.float32
+        )
+        target_rewards_t = torch.tensor(np.stack(target_rewards_l), dtype=torch.float32)
+        weights_t = torch.tensor(weights_l)
+        weights_t = weights_t / max(weights_t)
+
         return (
             images_t,
             actions_t,

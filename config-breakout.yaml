@@ -37,7 +37,7 @@ n_simulations: 20
 # Setup params  
 log_dir: "runs"
 log_name: "last"
-debug: True
+debug: False
 render: True
 print_simple: True
 max_games: 400

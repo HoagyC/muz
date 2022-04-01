@@ -3,7 +3,7 @@ obs_type: "image"
 seed: 0 
 
 # Training params
-learning_rate: 0.05
+learning_rate: 0.002
 learning_rate_decay: 0.9
 weight_decay: 0.0001
 root_dirichlet_alpha: 0.25
@@ -11,7 +11,7 @@ explore_frac: 0.25
 val_weight: 2
 discount: 0.997
 n_batches: 60
-batch_size: 5
+batch_size: 4
 rollout_depth: 5
 reward_depth: 5
 buffer_size: 10
@@ -36,7 +36,7 @@ n_simulations: 20
 
 # Setup params  
 log_dir: "runs"
-log_name: "last"
+log_name: "None"
 debug: False
 render: True
 print_simple: True

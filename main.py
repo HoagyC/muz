@@ -145,6 +145,6 @@ if __name__ == "__main__":
         config["render"] = False
         config["debug"] = False
         config["log_dir"] = "/content/gdrive/My Drive/muz"
-        config["batch_size"] = 50
+        config["batch_size"] = 30
 
     run(config)
