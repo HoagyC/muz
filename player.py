@@ -19,7 +19,7 @@ from models import scalar_to_support, support_to_scalar, normalize
 from mcts import search
 
 
-@ray.remote(max_restarts=-1)
+@ray.remote
 class Player:
     def __init__(self, log_dir):
         self.log_dir = log_dir

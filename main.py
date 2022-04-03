@@ -61,7 +61,7 @@ def run(config):
     tb_writer = SummaryWriter(log_dir=log_dir)
 
     memory_gpus = 0.1 if torch.cuda.is_available() else 0
-    memory = Memory.options(num_cpus=0.1, num_gpus=memory_gpus).remote(config, log_dir)
+    memory = Memory.options(num_cpus=0.01, num_gpus=memory_gpus).remote(config, log_dir)
     # open muz implementation uses a GameHistory class
     # with observation_history, action_history, reward_history
     # to_play which is who is to play in case it's a multiplayer, turn-based game
@@ -76,9 +76,9 @@ def run(config):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(f"Training on device: {device}")
 
-    player = Player.options(num_cpus=0.2).remote(log_dir=log_dir)
+    player = Player.options(num_cpus=0.3).remote(log_dir=log_dir)
 
-    train_cpus = 0 if torch.cuda.is_available() else 0.2
+    train_cpus = 0 if torch.cuda.is_available() else 0.3
     train_gpus = 0.9 if torch.cuda.is_available() else 0
     trainer = Trainer.options(num_cpus=train_cpus, num_gpus=train_gpus).remote()
 
@@ -146,5 +146,6 @@ if __name__ == "__main__":
         config["debug"] = False
         config["log_dir"] = "/content/gdrive/My Drive/muz"
         config["batch_size"] = 30
+        config
 
     run(config)

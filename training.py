@@ -212,7 +212,7 @@ class GameRecord:
         return self
 
 
-@ray.remote(max_restarts=-1, max_task_retries=3)
+@ray.remote
 class Memory:
     def __init__(self, config, log_dir):
         self.config = config

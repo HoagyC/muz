@@ -127,7 +127,7 @@ def search(
     return root_node
 
 
-@ray.remote(max_restarts=-1)
+@ray.remote
 class Trainer:
     def __init__(self):
         pass
