@@ -313,6 +313,7 @@ class Memory:
         if len(self.buffer) >= self.size:
             self.buffer.pop(0)
             self.buffer_ndxs.pop(0)
+            print(f"deleting a game, size now {len(self.buffer)}")
 
         self.buffer.append(game)
         self.buffer_ndxs.append(self.total_games)
