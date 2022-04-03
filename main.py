@@ -146,6 +146,7 @@ if __name__ == "__main__":
         config["debug"] = False
         config["log_dir"] = "/content/gdrive/My Drive/muz"
         config["batch_size"] = 30
-        config
+        if config["obs_type"] == "image":
+            config["repr_channels"] = 128
 
     run(config)

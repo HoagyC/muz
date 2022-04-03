@@ -30,7 +30,7 @@ priority_beta: 1
 
 # Model params
 latent_size: 20
-repr_channels: 200
+repr_channels: 64
 support_width: 25
 n_simulations: 10
 

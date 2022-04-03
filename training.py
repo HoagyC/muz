@@ -49,7 +49,7 @@ class GameRecord:
         # We therefore add the first frame when we initialize the class, so connected frame-action-reward
         # tuples have the same index
 
-        self.observations.append(obs)
+        self.observations.append(obs.astype(np.int8))
         self.actions.append(action)
         self.rewards.append(float(reward))
 
