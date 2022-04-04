@@ -1,6 +1,8 @@
 env_name: "CartPole-v1"
 obs_type: "discrete"
 seed: 0
+obs_size: [4]
+
 
 # Training params
 learning_rate: 0.02

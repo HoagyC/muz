@@ -22,7 +22,7 @@ def run(config):
 
     action_size = env.action_space.n
 
-    obs_size = env.observation_space.shape
+    obs_size = config["obs_size"]
 
     if config["obs_type"] == "discrete":
         obs_size = obs_size[0]

@@ -153,7 +153,9 @@ class Trainer:
         total_batches = 0
 
         while True:
+            print_timing("start")
             while ray.get(memory.get_buffer_len.remote()) == 0:
+                print("sleeping")
                 time.sleep(1)
             (
                 total_loss,
@@ -176,7 +178,7 @@ class Trainer:
                 batch_value_loss,
                 batch_consistency_loss,
             ) = (0, 0, 0, 0)
-
+            print_timing("init")
             (
                 images,
                 actions,
@@ -187,6 +189,7 @@ class Trainer:
                 depths,
             ) = ray.get(next_batch)
             next_batch = memory.get_batch.remote(batch_size=config["batch_size"])
+            print_timing("get batch")
 
             images = images.to(device=device)
             actions = actions.to(device=device)
@@ -194,6 +197,7 @@ class Trainer:
             target_values = target_values.to(device=device)
             target_policies = target_policies.to(device=device)
             weights = weights.to(device=device)
+            print_timing("uploading weights")
 
             assert (
                 len(actions)
@@ -203,17 +207,22 @@ class Trainer:
                 == len(images)
             )
             assert config["rollout_depth"] == actions.shape[1]
+            print_timing("asserting")
 
             # This is how far we will deny the use of the representation function,
             # requiring the dynamics function to learn to represent the s, a -> s function
             # All batch tensors are index first by batch x rollout
             init_images = images[:, 0]
+            print_timing("images0")
 
             latents = mu_net.represent(init_images)
+            print_timing("represent")
             for i in range(config["rollout_depth"]):
+                print_timing("rollout start")
                 screen_t = torch.tensor(depths) > i
                 if torch.sum(screen_t) < 1:
                     continue
+                print_timing("for init")
 
                 # We must do tthis sequentially, as the input to the dynamics function requires the output
                 # from the previous dynamics function
@@ -221,10 +230,11 @@ class Trainer:
                 target_value_stepi = target_values[:, i]
                 target_reward_stepi = target_rewards[:, i]
                 target_policy_stepi = target_policies[:, i]
+                print_timing("make target")
 
                 if config["consistency_loss"]:
                     target_latents = mu_net.represent(images[:, i]).detach()
-
+                print_timing("repreSENT")
                 one_hot_actions = nn.functional.one_hot(
                     actions[:, i],
                     num_classes=mu_net.action_size,
@@ -235,6 +245,7 @@ class Trainer:
                 new_latents, pred_reward_logits = mu_net.dynamics(
                     latents, one_hot_actions
                 )
+                print_timing("forward pass")
 
                 # We scale down the gradient, I believe so that the gradient at the base of the unrolled
                 # network converges to a maximum rather than increasing linearly with depth
@@ -247,6 +258,7 @@ class Trainer:
                 target_value_sup_i = scalar_to_support(
                     target_value_stepi, half_width=config["support_width"]
                 )
+                print_timing("discrete to scalar")
 
                 # Cutting off cases where there's not enough data for a full rollout
 
@@ -293,6 +305,7 @@ class Trainer:
                 #     ),
                 #     target_value_sup_i,
                 # )
+                print_timing("done losses")
             # Aggregate the losses to a single measure
             batch_loss = (
                 batch_policy_loss
@@ -300,8 +313,8 @@ class Trainer:
                 + (batch_value_loss * config["val_weight"])
                 + (batch_consistency_loss * config["consistency_weight"])
             ) / config["batch_size"]
-
             batch_loss = batch_loss.mean()
+            print_timing("batch loss")
 
             if config["debug"]:
                 print(
@@ -314,12 +327,14 @@ class Trainer:
             if config["grad_clip"] != 0:
                 torch.nn.utils.clip_grad_norm_(mu_net.parameters(), config["grad_clip"])
             mu_net.optimizer.step()
+            print_timing("optimizer")
 
             total_loss += batch_loss
             total_value_loss += batch_value_loss
             total_policy_loss += batch_policy_loss
             total_reward_loss += batch_reward_loss
             total_consistency_loss += batch_consistency_loss
+            print_timing("loss")
 
             metrics_dict = {
                 "Loss/total": total_loss,
@@ -337,6 +352,7 @@ class Trainer:
                 print(
                     f"Completed {total_batches} total batches of size {config['batch_size']}"
                 )
+            print_timing("end")
 
         return metrics_dict
 
@@ -523,6 +539,16 @@ def add_dirichlet(prior, dirichlet_alpha, explore_frac):
     )
     new_prior = (1 - explore_frac) * prior + explore_frac * noise
     return new_prior
+
+
+last_time = datetime.datetime.now()
+
+
+def print_timing(tag):
+    global last_time
+    now = datetime.datetime.now()
+    print(f"{tag:20} {now - last_time}")
+    last_time = now
 
 
 if __name__ == "__main__":

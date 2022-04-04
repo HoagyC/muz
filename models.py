@@ -7,6 +7,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import random
 
+import cv2
+
 
 class CartRepr(nn.Module):
     def __init__(self, obs_size, latent_size):
@@ -135,9 +137,9 @@ class MuZeroAtariNet(nn.Module):
 
         self.action_size = action_size
         self.obs_size = obs_size
-        self.latent_depth = config["latent_size"]
         self.support_width = config["support_width"]
-        self.repr_channels = config["repr_channels"]
+        self.channel_list = config["channel_list"]
+        self.latent_depth = self.channel_list[-1]
         self.latent_area = self.x_size_final * self.y_size_final
 
         self.dyna_net = AtariDynamicsNet(
@@ -150,7 +152,7 @@ class MuZeroAtariNet(nn.Module):
             self.x_pad,
             self.y_pad,
             self.latent_depth,
-            self.repr_channels,
+            self.channel_list,
             self.config["last_n_frames"],
         )
 
@@ -292,46 +294,65 @@ class AtariDereprNet(nn.Module):
 
 
 class AtariRepresentationNet(nn.Module):
-    def __init__(self, x_pad, y_pad, latent_depth, n_channels, last_n_frames):
+    def __init__(self, x_pad, y_pad, latent_depth, channel_list, last_n_frames):
         super().__init__()
 
         self.pad = (0, x_pad, 0, y_pad)
 
         self.conv1 = nn.Conv2d(
-            last_n_frames * 4, n_channels, stride=2, kernel_size=3, padding=1
+            last_n_frames * 4, channel_list[0], stride=2, kernel_size=3, padding=1
         )
-        self.batch_norm1 = nn.BatchNorm2d(num_features=n_channels, momentum=0.1)
+        self.batch_norm1 = nn.BatchNorm2d(num_features=channel_list[0], momentum=0.1)
 
-        self.res1 = ResBlockSmall(n_channels)
+        self.res1 = ResBlockSmall(channel_list[0])
+        self.res2 = ResBlockSmall(channel_list[0])
 
         self.conv2 = nn.Conv2d(
-            n_channels, n_channels, stride=2, kernel_size=3, padding=1
+            channel_list[0], channel_list[1], stride=2, kernel_size=3, padding=1
         )
+        self.batch_norm2 = nn.BatchNorm2d(num_features=channel_list[1], momentum=0.1)
 
-        self.res2 = ResBlockSmall(n_channels)
+        self.res3 = ResBlockSmall(channel_list[1])
+        self.res4 = ResBlockSmall(channel_list[1])
+        self.res5 = ResBlockSmall(channel_list[1])
+
         self.av_pool1 = nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
-        self.res3 = ResBlockSmall(n_channels)
-        self.av_pool2 = nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
-        self.res4 = ResBlockSmall(n_channels)
 
-        self.conv3 = nn.Conv2d(
-            n_channels, latent_depth, stride=1, kernel_size=3, padding=1
-        )
+        self.res6 = ResBlockSmall(channel_list[1])
+        self.res7 = ResBlockSmall(channel_list[1])
+        self.res8 = ResBlockSmall(channel_list[1])
+
+        self.av_pool2 = nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
 
     def forward(self, x):  # inputs are 96x96??
         x = x.to(dtype=torch.float32)
         out = F.pad(x, self.pad, "constant", 0)
+
         out = torch.relu(self.batch_norm1(self.conv1(out)))  # outputs 48x48
+        assert out.shape[-2:] == torch.Size([48, 48])
+
         out = self.res1(out)
-
-        out = self.conv2(out)  # outputs 24x24
-
         out = self.res2(out)
-        out = self.av_pool1(out)  # outputs 12x12
+
+        out = torch.relu(self.batch_norm2(self.conv2(out)))  # outputs 24x24
+
+        assert out.shape[-2:] == torch.Size([24, 24])
+
         out = self.res3(out)
-        out = self.av_pool2(out)  # outputs 6x6
         out = self.res4(out)
-        out = self.conv3(out)
+        out = self.res5(out)
+
+        out = self.av_pool1(out)  # outputs 12x12
+
+        assert out.shape[-2:] == torch.Size([12, 12])
+
+        out = self.res6(out)
+        out = self.res7(out)
+        out = self.res8(out)
+
+        out = self.av_pool2(out)  # outputs 6x6
+
+        assert out.shape[-2:] == torch.Size([6, 6])
         return out
 
 
@@ -469,5 +490,8 @@ def scalar_to_support(scalar: torch.Tensor, epsilon=0.00001, half_width: int = 1
 
 
 def normalize(image):
-    image_a = (np.array(image, dtype=np.float32)) / 256
+    image_a = np.array(image, dtype=np.float32)
+    # resize for neat convolutions, taken from openmuZ
+    image_a = cv2.resize(image_a, (96, 96), interpolation=cv2.INTER_AREA)
+    image_a = image_a / 256
     return image_a.transpose(2, 0, 1)

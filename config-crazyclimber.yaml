@@ -1,5 +1,6 @@
 env_name: "CrazyClimber-v0"
 obs_type: "image"
+obs_size: [96, 96, 3]
 seed: 0 
 
 # Training params

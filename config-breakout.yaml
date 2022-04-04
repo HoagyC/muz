@@ -1,9 +1,10 @@
 env_name: "Breakout-v0"
 obs_type: "image"
+obs_size: [96, 96, 3]
 seed: 0 
 
 # Training params
-learning_rate: 0.003
+learning_rate: 0.2
 learning_rate_decay: 0.9
 weight_decay: 0.0001
 root_dirichlet_alpha: 0.25
@@ -30,7 +31,7 @@ priority_beta: 1
 
 # Model params
 latent_size: 20
-repr_channels: 64
+channel_list: [128, 256]
 support_width: 25
 n_simulations: 10
 
