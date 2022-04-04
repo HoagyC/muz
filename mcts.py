@@ -353,7 +353,7 @@ class Trainer:
             st = time.time()
             mu_net = mu_net.to(device=torch.device("cpu"))
             print_timing("to_cpu")
-            if total_batches % 5 == 0:
+            if total_batches % 50 == 0:
                 memory.save_model.remote(mu_net, log_dir)
             total_batches += 1
             if total_batches % 100 == 0:
@@ -555,7 +555,7 @@ last_time = datetime.datetime.now()
 def print_timing(tag):
     global last_time
     now = datetime.datetime.now()
-    print(f"{tag:20} {now - last_time}")
+    # print(f"{tag:20} {now - last_time}")
     last_time = now
 
 

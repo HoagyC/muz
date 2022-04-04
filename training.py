@@ -294,7 +294,6 @@ class Memory:
         else:
             print(f"no dict to load at {path}")
 
-        print(f"loading time = {time.time() - it}")
         return model
 
     def update_stats(self):
