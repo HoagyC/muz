@@ -18,7 +18,7 @@ from training import GameRecord, Memory, Reanalyser
 
 
 def run(config):
-    env = gym.make(config["env_name"], render_mode="human")
+    env = gym.make(config["env_name"])
 
     action_size = env.action_space.n
 
