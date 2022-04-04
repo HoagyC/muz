@@ -352,8 +352,8 @@ class Trainer:
             }
             st = time.time()
             mu_net = mu_net.to(device=torch.device("cpu"))
-            print_timing("to_cpu")        
-            memory.save_model.remote(mu_net), log_dir)
+            print_timing("to_cpu")
+            memory.save_model.remote(mu_net, log_dir)
             total_batches += 1
             if total_batches % 100 == 0:
                 print(
