@@ -31,13 +31,13 @@ priority_beta: 1
 
 # Model params
 latent_size: 20
-channel_list: [128, 256]
+channel_list: [16, 32]
 support_width: 25
 n_simulations: 10
 
 # Setup params  
 log_dir: "runs"
-log_name: "None"
+log_name: "last"
 debug: False
 render: True
 print_simple: True

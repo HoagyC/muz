@@ -1,4 +1,5 @@
 import os
+import pickle
 import time
 import yaml
 
@@ -218,8 +219,6 @@ class Memory:
         self.config = config
         self.log_dir = log_dir
         self.size = config["buffer_size"]  # How many game records to store
-        self.buffer = []  # List of stored game records
-        self.buffer_ndxs = []
         self.total_vals = 0  # How many total steps are stored
 
         data = yaml.safe_load(open(os.path.join(self.log_dir, "data.yaml"), "r"))
@@ -236,6 +235,20 @@ class Memory:
         self.rollout_depth = config["rollout_depth"]
         self.priorities = []
         self.minmax = MinMax()
+        if os.path.exists(os.path.join("buffers", config["env_name"])):
+            self.load_buffer()
+        else:
+            self.buffer = []
+            self.buffer_ndxs = []
+
+    def save_buffer(self):
+        with open(os.path.join("buffers", self.config["env_name"]), "wb") as f:
+            pickle.dump((self.buffer, self.buffer_ndxs), f)
+
+    def load_buffer(self):
+        with open(os.path.join("buffers", self.config["env_name"]), "rb") as f:
+            self.buffer, self.buffer_ndxs = pickle.load(f)
+        self.update_stats()
 
     def get_data(self):
         return {"games": self.total_games, "frames": self.total_frames}
@@ -321,6 +334,7 @@ class Memory:
         self.update_stats()
         self.total_games += 1
         self.total_frames += n_frames
+        self.save_buffer()
 
     def get_batch(self, batch_size=40):
         batch = []

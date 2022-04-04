@@ -154,11 +154,14 @@ class Trainer:
         if "latest_model_dict.pt" in os.listdir(log_dir):
             mu_net = ray.get(memory.load_model.remote(log_dir, mu_net))
 
+        while ray.get(memory.get_buffer_len.remote()) == 0:
+            time.sleep(1)
+        ms = time.time()
+
         while True:
             print_timing("start")
-            while ray.get(memory.get_buffer_len.remote()) == 0:
-                print("sleeping")
-                time.sleep(1)
+            st = time.time()
+
             (
                 total_loss,
                 total_policy_loss,
@@ -350,7 +353,6 @@ class Trainer:
                     total_consistency_loss * config["consistency_weight"]
                 ),
             }
-            st = time.time()
             mu_net = mu_net.to(device=torch.device("cpu"))
             print_timing("to_cpu")
             if total_batches % 50 == 0:

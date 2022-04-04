@@ -145,9 +145,10 @@ if __name__ == "__main__":
 
     if len(sys.argv) > 2 and sys.argv[2] == "colab":
         config["render"] = False
+        config["channel_list"] = [128, 256]
         config["debug"] = False
         config["log_dir"] = "/content/gdrive/My Drive/muz"
-        config["batch_size"] = 30
+        config["batch_size"] = 32
         if config["obs_type"] == "image":
             config["repr_channels"] = 128
 

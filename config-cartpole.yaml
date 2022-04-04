@@ -36,7 +36,7 @@ n_simulations: 40
 
 # Setup params  
 log_dir: "runs"
-log_name: "None"
+log_name: "last"
 debug: False
 render: True
 print_simple: True
