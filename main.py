@@ -18,7 +18,7 @@ from training import GameRecord, Memory, Reanalyser
 
 
 def run(config):
-    env = gym.make(config["env_name"])
+    env = gym.make(config["env_name"], render_mode="human")
 
     action_size = env.action_space.n
 
@@ -59,6 +59,8 @@ def run(config):
         yaml.dump(init_dict, open(os.path.join(log_dir, "data.yaml"), "w+"))
 
     tb_writer = SummaryWriter(log_dir=log_dir)
+
+    ray.init()
 
     memory_gpus = 0.1 if torch.cuda.is_available() else 0
     memory = Memory.options(num_cpus=0.01, num_gpus=memory_gpus).remote(config, log_dir)

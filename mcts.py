@@ -151,6 +151,8 @@ class Trainer:
         """
         next_batch = None
         total_batches = 0
+        if "latest_model_dict.pt" in os.listdir(log_dir):
+            mu_net = ray.get(memory.load_model.remote(log_dir, mu_net))
 
         while True:
             print_timing("start")
@@ -169,8 +171,6 @@ class Trainer:
             print_timing("next batch command")
 
             val_diff = 0
-            if "latest_model_dict.pt" in os.listdir(log_dir):
-                mu_net = ray.get(memory.load_model.remote(log_dir, mu_net))
 
             print_timing("load model")
             mu_net.train()
@@ -353,7 +353,8 @@ class Trainer:
             st = time.time()
             mu_net = mu_net.to(device=torch.device("cpu"))
             print_timing("to_cpu")
-            memory.save_model.remote(mu_net, log_dir)
+            if total_batches % 5 == 0:
+                memory.save_model.remote(mu_net, log_dir)
             total_batches += 1
             if total_batches % 100 == 0:
                 print(
