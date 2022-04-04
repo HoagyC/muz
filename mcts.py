@@ -351,13 +351,15 @@ class Trainer:
                 ),
             }
             st = time.time()
-            memory.save_model.remote(mu_net.to(device=torch.device("cpu")), log_dir)
+            mu_net = mu_net.to(device=torch.device("cpu"))
+            print_timing("to_cpu")        
+            memory.save_model.remote(mu_net), log_dir)
             total_batches += 1
             if total_batches % 100 == 0:
                 print(
                     f"Completed {total_batches} total batches of size {config['batch_size']}"
                 )
-            print_timing("end")
+            print_timing("saving/end")
 
         return metrics_dict
 
