@@ -140,8 +140,8 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         try:
             config = yaml.safe_load(open("config-" + sys.argv[1] + ".yaml", "r"))
-        except:
-            raise ValueError(f"No config file for game '{sys.argv[1]}'")
+        except FileNotFoundError:
+            print(f"No config file for game '{sys.argv[1]}'")
     else:
         print("Specify game name")
 

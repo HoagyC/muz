@@ -36,7 +36,8 @@ class GameRecord:
         self.rewards = []
         # List of the number of times each possible action was sampled at the root of the search tree
         self.search_stats = []
-        # List of *estimated* total future reward from the node, as measured by the average value at the root of the search tree
+        # List of *estimated* total future reward from the node,
+        # as measured by the average value at the root of the search tree
         self.values = []
 
         self.priorities = []
@@ -115,7 +116,8 @@ class GameRecord:
         # ndx is where in the record of the game we start
         # reward_depth is how far into the future we use the actual reward - beyond this we use predicted value
 
-        # rollout_depth is how many iterations of the dynamics function we take, from where we apply the represent function
+        # rollout_depth is how many iterations of the dynamics function we take,
+        # from where we apply the represent function
         # it acts like an additional dimension of batching when we make the target but the crucial difference is that
         # when we train, we will use a hidden state by repeated application of the dynamics function from the init_image
         # rather than creating a new hidden state from the game obs at the time

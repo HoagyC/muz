@@ -8,7 +8,7 @@ import main
 def run_config(config, path, n_runs=10):
     os.makedirs(path, exist_ok=True)
 
-    with open(os.path.join(path, f"config.yaml"), "w") as f:
+    with open(os.path.join(path, "config.yaml"), "w") as f:
         f.write(yaml.dump(init_config))
 
     for i in range(n_runs):
