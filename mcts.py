@@ -171,6 +171,8 @@ class Trainer:
             val_diff = 0
             if "latest_model_dict.pt" in os.listdir(log_dir):
                 mu_net = ray.get(memory.load_model.remote(log_dir, mu_net))
+
+            print_timing("load model")
             mu_net.train()
             print_timing("to train")
             mu_net = mu_net.to(device)
