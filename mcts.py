@@ -166,12 +166,15 @@ class Trainer:
             ) = (0, 0, 0, 0, 0)
             if not next_batch:
                 next_batch = memory.get_batch.remote(batch_size=config["batch_size"])
+            print_timing("next batch command")
 
             val_diff = 0
             if "latest_model_dict.pt" in os.listdir(log_dir):
                 mu_net = ray.get(memory.load_model.remote(log_dir, mu_net))
             mu_net.train()
+            print_timing("to train")
             mu_net = mu_net.to(device)
+            print_timing("to device")
             (
                 batch_policy_loss,
                 batch_reward_loss,
