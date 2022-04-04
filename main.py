@@ -48,6 +48,8 @@ def run(config):
             datetime.datetime.now().strftime("%Y-%m-%d_%H.%M.%S") + config["env_name"]
         )
 
+    osmakedirs("buffers", exists_ok=True)
+
     print(f"Logging to '{config['log_name']}'")
 
     log_dir = os.path.join(config["log_dir"], config["log_name"])
