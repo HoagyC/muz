@@ -360,7 +360,7 @@ class Trainer:
             total_batches += 1
             if total_batches % 100 == 0:
                 print(
-                    f"Completed {total_batches} total batches of size {config['batch_size']}"
+                    f"Completed {total_batches} total batches of size {config['batch_size']}, took {(time.time() - st)}"
                 )
             print_timing("saving/end")
 
