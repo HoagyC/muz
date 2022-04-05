@@ -289,7 +289,6 @@ class Memory:
     def load_model(self, log_dir, model, device=torch.device("cpu")):
         it = time.time()
         path = os.path.join(log_dir, "latest_model_dict.pt")
-        print("loading!")
         if os.path.exists(path):
             model.load_state_dict(torch.load(path, map_location=device))
         else:
@@ -425,7 +424,6 @@ class Reanalyser:
 
     def reanalyse(self, mu_net, memory):
         while True:
-            print("ananaa")
             if "latest_model_dict.pt" in os.listdir(self.log_dir):
                 mu_net = ray.get(
                     memory.load_model.remote(self.log_dir, mu_net, device=self.device)
