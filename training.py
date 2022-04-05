@@ -54,7 +54,6 @@ class GameRecord:
 
         int_obs = convert_to_int(obs, self.config["obs_type"])
         self.observations.append(int_obs)
-        # print(np.mean(int_obs))
         self.actions.append(action)
         self.rewards.append(float(reward))
 
@@ -75,7 +74,6 @@ class GameRecord:
             last_n_actions = self.actions[max(0, pos - n + 1) : pos + 1]
 
         last_n = convert_from_int(last_n, self.config["obs_type"])
-        print(np.mean(last_n))
 
         last_n_actions = [-1] * (n - len(last_n_actions)) + last_n_actions
         last_n_actions = torch.tensor(last_n_actions, dtype=torch.float32) + 1
