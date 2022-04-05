@@ -12,6 +12,7 @@ import torch
 import ray
 
 from mcts import search, MinMax
+from utils import convert_to_int, convert_from_int
 
 
 class GameRecord:
@@ -29,7 +30,7 @@ class GameRecord:
         self.discount = discount  # Discount rate to be applied to future rewards
 
         # List of states received from the game
-        self.observations = [init_frame]
+        self.observations = [convert_to_int(init_frame, self.config["obs_type"])]
         # List of actions taken in the game
         self.actions = []
         # List of rewards received after taking action in game (single step)
@@ -51,7 +52,9 @@ class GameRecord:
         # We therefore add the first frame when we initialize the class, so connected frame-action-reward
         # tuples have the same index
 
-        self.observations.append(obs.astype(np.int8))
+        int_obs = convert_to_int(obs, self.config["obs_type"])
+        self.observations.append(int_obs)
+        # print(np.mean(int_obs))
         self.actions.append(action)
         self.rewards.append(float(reward))
 
@@ -70,6 +73,9 @@ class GameRecord:
                 self.observations[max(0, pos - n + 1) : pos + 1], axis=0
             )
             last_n_actions = self.actions[max(0, pos - n + 1) : pos + 1]
+
+        last_n = convert_from_int(last_n, self.config["obs_type"])
+        print(np.mean(last_n))
 
         last_n_actions = [-1] * (n - len(last_n_actions)) + last_n_actions
         last_n_actions = torch.tensor(last_n_actions, dtype=torch.float32) + 1
@@ -174,6 +180,7 @@ class GameRecord:
                 ]
             else:
                 images = self.observations[ndx : ndx + actual_rollout_depth]
+                images = [convert_from_int(x, self.config["obs_type"]) for x in images]
 
             actions = self.actions[ndx : ndx + actual_rollout_depth]
 
@@ -193,26 +200,6 @@ class GameRecord:
                 target_policies_a,
                 actual_rollout_depth,
             )
-
-    def reanalyse(self, mu_net, log_dir, minmax, current_game):
-        # Reanalyse all except last observation for which there is no corresponding action
-        for i in range(len(self.observations) - 1):
-            if self.config["obs_type"] == "image":
-                obs = self.get_last_n(pos=i)
-            else:
-                obs = self.observations[i]
-            new_root = search(
-                config=self.config,
-                mu_net=mu_net,
-                current_frame=obs,
-                minmax=minmax,
-                log_dir=log_dir,
-                device=torch.device("cpu"),
-            )
-            self.values[i] = new_root.average_val
-            self.add_priorities(n_steps=self.config["reward_depth"], reanalysing=True)
-        self.last_analysed = current_game
-        return self
 
 
 @ray.remote
@@ -237,11 +224,11 @@ class Memory:
         self.rollout_depth = config["rollout_depth"]
         self.priorities = []
         self.minmax = MinMax()
-        if os.path.exists(os.path.join("buffers", config["env_name"])):
-            self.load_buffer()
-        else:
-            self.buffer = []
-            self.buffer_ndxs = []
+        # if os.path.exists(os.path.join("buffers", config["env_name"])):
+        #     self.load_buffer()
+        # else:
+        self.buffer = []
+        self.buffer_ndxs = []
 
     def save_buffer(self):
         with open(os.path.join("buffers", self.config["env_name"]), "wb") as f:
@@ -304,6 +291,7 @@ class Memory:
     def load_model(self, log_dir, model, device=torch.device("cpu")):
         it = time.time()
         path = os.path.join(log_dir, "latest_model_dict.pt")
+        print("loading!")
         if os.path.exists(path):
             model.load_state_dict(torch.load(path, map_location=device))
         else:
@@ -439,6 +427,7 @@ class Reanalyser:
 
     def reanalyse(self, mu_net, memory):
         while True:
+            print("ananaa")
             if "latest_model_dict.pt" in os.listdir(self.log_dir):
                 mu_net = ray.get(
                     memory.load_model.remote(self.log_dir, mu_net, device=self.device)
@@ -474,6 +463,7 @@ class Reanalyser:
                         obs = game_rec.get_last_n(pos=i)
                     else:
                         obs = game_rec.observations[i]
+                    obs = convert_from_int(obs, self.config["obs_type"])
                     new_root = search(
                         config=self.config,
                         mu_net=mu_net,

@@ -1,5 +1,5 @@
 env_name: "CartPole-v1"
-obs_type: "discrete"
+obs_type: "cartpole"
 seed: 0
 obs_size: [4]
 
@@ -21,7 +21,7 @@ consistency_loss: True
 consistency_weight: 0.5
 reanalyse: True
 reanalyse_n: 1
-grad_clip: 0 # 0 indicates no clipping
+grad_clip: 1 # 0 indicates no clipping
 prior_weight: 1
 
 # Replay params
@@ -36,7 +36,7 @@ n_simulations: 40
 
 # Setup params  
 log_dir: "runs"
-log_name: "last"
+log_name: "None"
 debug: False
 render: True
 print_simple: True

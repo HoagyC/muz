@@ -24,11 +24,11 @@ def run(config):
 
     obs_size = config["obs_size"]
 
-    if config["obs_type"] == "discrete":
+    if config["obs_type"] == "cartpole":
         obs_size = obs_size[0]
 
     net_type_dict = {
-        "discrete": MuZeroCartNet,
+        "cartpole": MuZeroCartNet,
         "image": MuZeroAtariNet,
     }
 

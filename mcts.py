@@ -321,7 +321,7 @@ class Trainer:
                 + batch_reward_loss
                 + (batch_value_loss * config["val_weight"])
                 + (batch_consistency_loss * config["consistency_weight"])
-            ) / config["batch_size"]
+            )
             batch_loss = batch_loss.mean()
             print_timing("batch loss")
 
