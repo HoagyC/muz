@@ -46,6 +46,12 @@ def search(
 
         frame_t = torch.tensor(current_frame, device=device)
         init_latent = mu_net.represent(frame_t.unsqueeze(0))[0]
+        print(
+            torch.mean(frame_t),
+            torch.var(frame_t),
+            torch.mean(init_latent),
+            torch.var(init_latent),
+        )
         init_policy, init_val = [x[0] for x in mu_net.predict(init_latent.unsqueeze(0))]
 
         # Getting probabilities from logits and a scalar value from the categorical support

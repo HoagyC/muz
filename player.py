@@ -57,12 +57,12 @@ class Player:
                 last_analysed=self.total_games,
             )
 
-            if config["temp_time"] <= 0:
-                temperature = 0
+            if self.total_frames < 50_000:
+                temperature = 1
+            elif self.total_frames < 75_000:
+                temperature = 0.5
             else:
-                temperature = config["temp_time"] / (
-                    self.total_games + config["temp_time"]
-                )
+                temperature = 0.25
             score = 0
 
             if self.total_games % 10 == 0 and self.total_games > 0:

@@ -37,7 +37,7 @@ n_simulations: 20
 
 # Setup params  
 log_dir: "runs"
-log_name: "None"
+log_name: "2-22-04-06_17.55.07MsPacman-v0"
 debug: False
 render: True
 print_simple: True

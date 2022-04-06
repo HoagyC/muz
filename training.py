@@ -458,8 +458,8 @@ class Reanalyser:
                     if self.config["obs_type"] == "image":
                         obs = game_rec.get_last_n(pos=i)
                     else:
-                        obs = game_rec.observations[i]
-                    obs = convert_from_int(obs, self.config["obs_type"])
+                        obs = convert_from_int(obs, self.config["obs_type"])
+
                     new_root = search(
                         config=self.config,
                         mu_net=mu_net,

@@ -22,6 +22,7 @@ reanalyse: True
 reanalyse_n: 1
 grad_clip: 1
 last_n_frames: 4  
+frame_skip: 4
 prior_weight: 1
 
 # Replay params
