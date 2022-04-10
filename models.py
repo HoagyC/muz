@@ -99,7 +99,7 @@ class MuZeroCartNet(nn.Module):
             + list(self.dyna_net.parameters())
             + list(self.repr_net.parameters())
         )
-        self.optimizer = torch.optim.SGD(
+        self.optimizer = torch.optim.Adam(
             params, lr=lr, weight_decay=self.config["weight_decay"], momentum=0.9
         )
 
@@ -172,8 +172,8 @@ class MuZeroAtariNet(nn.Module):
             + list(self.dyna_net.parameters())
             + list(self.repr_net.parameters())
         )
-        self.optimizer = torch.optim.SGD(
-            params, lr=lr, weight_decay=self.config["weight_decay"], momentum=0.9
+        self.optimizer = torch.optim.Adam(
+            params, lr=lr, weight_decay=self.config["weight_decay"]
         )
 
     def predict(self, latent):
