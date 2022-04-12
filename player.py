@@ -118,6 +118,3 @@ class Player:
                 + f"Value mean, std: {np.mean(np.array(vals)):6.2f}, {np.std(np.array(vals)):5.2f}. "
                 + f"s/move: {time_per_move:5.3f}."
             )
-
-            with open(os.path.join(log_dir, "data.yaml"), "w+") as f:
-                yaml.dump({"steps": self.total_frames, "games": self.total_games}, f)

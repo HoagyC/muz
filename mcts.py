@@ -147,6 +147,7 @@ class Trainer:
         config,
         log_dir,
         device=torch.device("cpu"),
+        writer=None,
     ):
         """
         The train function simultaneously trains the prediction, dynamics and representation functions
@@ -157,8 +158,9 @@ class Trainer:
         is trained - is it akin to training through a recurrent neural network with the prediction function
         as a head
         """
+        self.writer = SummaryWriter(log_dir=log_dir)
         next_batch = None
-        total_batches = 0
+        total_batches = ray.get(memory.get_data.remote())["batches"]
         if "latest_model_dict.pt" in os.listdir(log_dir):
             mu_net = ray.get(memory.load_model.remote(log_dir, mu_net))
 
@@ -283,7 +285,12 @@ class Trainer:
                 value_loss = mu_net.value_loss(
                     pred_value_logits[screen_t], target_value_sup_i[screen_t]
                 )
-
+                pred_values = support_to_scalar(
+                    torch.softmax(pred_value_logits[screen_t], dim=1)
+                )
+                vvar = torch.var(pred_values)
+                if vvar > 0.01:
+                    print(vvar, torch.var(target_value_stepi))
                 val_diff += sum(
                     target_value_stepi[screen_t]
                     - support_to_scalar(
@@ -309,8 +316,8 @@ class Trainer:
                 batch_value_loss += (value_loss * weights[screen_t]).sum()
                 batch_reward_loss += (reward_loss * weights[screen_t]).sum()
                 batch_consistency_loss += (consistency_loss * weights[screen_t]).sum()
-
                 latents = new_latents
+                # print(batch_value_loss, batch_consistency_loss)
 
                 # print(
                 #     target_value_stepi,
@@ -363,9 +370,16 @@ class Trainer:
             }
             mu_net = mu_net.to(device=torch.device("cpu"))
             print_timing("to_cpu")
+
+            memory.done_batch.remote()
             if total_batches % 50 == 0:
                 memory.save_model.remote(mu_net, log_dir)
             total_batches += 1
+
+            if self.writer:
+                for key, val in metrics_dict.items():
+                    self.writer.add_scalar(key, val, total_batches)
+
             if total_batches % 100 == 0:
                 print(
                     f"Completed {total_batches} total batches of size {config['batch_size']}, took {(time.time() - st)}"

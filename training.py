@@ -211,6 +211,7 @@ class Memory:
         data = yaml.safe_load(open(os.path.join(self.log_dir, "data.yaml"), "r"))
         self.total_games = data["games"]
         self.total_frames = data["steps"]
+        self.total_batches = data["batches"]
 
         self.prioritized_replay = config["priority_replay"]
         self.priority_alpha = config["priority_alpha"]
@@ -222,10 +223,11 @@ class Memory:
         self.rollout_depth = config["rollout_depth"]
         self.priorities = []
         self.minmax = MinMax()
-        # if os.path.exists(os.path.join("buffers", config["env_name"])):
-        #     self.load_buffer()
-        # else:
-        self.buffer = []
+        if os.path.exists(os.path.join("buffers", config["env_name"])):
+            self.load_buffer()
+            print(self.buffer)
+        else:
+            self.buffer = []
         self.buffer_ndxs = []
 
     def save_buffer(self):
@@ -238,7 +240,11 @@ class Memory:
         self.update_stats()
 
     def get_data(self):
-        return {"games": self.total_games, "frames": self.total_frames}
+        return {
+            "games": self.total_games,
+            "frames": self.total_frames,
+            "batches": self.total_batches,
+        }
 
     def get_buffer(self):
         return self.buffer
@@ -309,6 +315,21 @@ class Memory:
         sum_priorities = sum(self.priorities)
         self.priorities = [p / sum_priorities for p in self.priorities]
 
+    def done_batch(self):
+        self.total_batches += 1
+        self.save_core_stats()
+
+    def save_core_stats(self, total_batches=None):
+        with open(os.path.join(self.log_dir, "data.yaml"), "w+") as f:
+            yaml.dump(
+                {
+                    "steps": self.total_frames,
+                    "games": self.total_games,
+                    "batches": self.total_batches,
+                },
+                f,
+            )
+
     def save_game(self, game, n_frames):
         # If reached the max size, remove the oldest GameRecord, and update stats accordingly
         if len(self.buffer) >= self.size:
@@ -321,6 +342,7 @@ class Memory:
         self.total_games += 1
         self.total_frames += n_frames
         self.save_buffer()
+        self.save_core_stats
 
     def get_batch(self, batch_size=40):
         batch = []
@@ -432,9 +454,7 @@ class Reanalyser:
             # No point reanalysing until there are multiple games in the history
             while True:
                 buffer_len = ray.get(memory.get_buffer_len.remote())
-                train_stats = yaml.safe_load(
-                    open(os.path.join(self.log_dir, "data.yaml"), "r")
-                )
+                train_stats = ray.get(memory.get_data.remote())
                 current_game = train_stats["games"]
                 if buffer_len >= 1 and current_game >= 2:
                     break

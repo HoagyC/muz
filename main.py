@@ -86,14 +86,14 @@ def run(config):
     train_gpus = 0.9 if torch.cuda.is_available() else 0
     trainer = Trainer.options(num_cpus=train_cpus, num_gpus=train_gpus).remote()
 
-    player.play.remote(
-        config=config,
-        mu_net=muzero_network,
-        log_dir=log_dir,
-        device=torch.device("cpu"),
-        memory=memory,
-        env=env,
-    )
+    # player.play.remote(
+    #     config=config,
+    #     mu_net=muzero_network,
+    #     log_dir=log_dir,
+    #     device=torch.device("cpu"),
+    #     memory=memory,
+    #     env=env,
+    # )
 
     trainer.train.remote(
         mu_net=muzero_network,
