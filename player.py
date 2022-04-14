@@ -101,8 +101,6 @@ class Player:
 
                 game_record.add_step(frame, action, reward, tree)
 
-                # mcts.update()
-
                 frames += 1
                 score += reward
                 vals.append(float(tree.val_pred))

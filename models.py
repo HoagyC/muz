@@ -99,7 +99,7 @@ class MuZeroCartNet(nn.Module):
             + list(self.dyna_net.parameters())
             + list(self.repr_net.parameters())
         )
-        self.optimizer = torch.optim.Adam(
+        self.optimizer = torch.optim.SGD(
             params, lr=lr, weight_decay=self.config["weight_decay"], momentum=0.9
         )
 
@@ -172,7 +172,7 @@ class MuZeroAtariNet(nn.Module):
             + list(self.dyna_net.parameters())
             + list(self.repr_net.parameters())
         )
-        self.optimizer = torch.optim.Adam(
+        self.optimizer = torch.optim.SGD(
             params, lr=lr, weight_decay=self.config["weight_decay"]
         )
 
@@ -207,15 +207,15 @@ class ResBlockSmall(torch.nn.Module):
         self.dropout = nn.Dropout(0.2)
 
     def forward(self, x):
-        out = self.dropout(x)
+        out = F.dropout(x, 0.5)
         out = self.conv1(out)
         out = self.bn1(out)
-        out = torch.nn.functional.relu(out)
-        out = self.dropout(x)
+        out = F.relu(out)
+        out = F.dropout(out, 0.2)
         out = self.conv2(out)
         out = self.bn2(out)
         out += x
-        out = torch.nn.functional.relu(out)
+        out = F.relu(out)
         return out
 
 

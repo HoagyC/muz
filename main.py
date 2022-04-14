@@ -15,6 +15,7 @@ from mcts import Trainer
 from player import Player
 from models import MuZeroCartNet, MuZeroAtariNet
 from training import GameRecord, Memory, Reanalyser
+from testgame import TestEnv
 
 
 def run(config):
@@ -57,7 +58,7 @@ def run(config):
     if not os.path.exists(log_dir):
         os.mkdir(log_dir)
     if "data.yaml" not in os.listdir(log_dir):
-        init_dict = {"games": 0, "steps": 0}
+        init_dict = {"games": 0, "steps": 0, "batches": 0}
         yaml.dump(init_dict, open(os.path.join(log_dir, "data.yaml"), "w+"))
 
     tb_writer = SummaryWriter(log_dir=log_dir)
@@ -86,14 +87,14 @@ def run(config):
     train_gpus = 0.9 if torch.cuda.is_available() else 0
     trainer = Trainer.options(num_cpus=train_cpus, num_gpus=train_gpus).remote()
 
-    # player.play.remote(
-    #     config=config,
-    #     mu_net=muzero_network,
-    #     log_dir=log_dir,
-    #     device=torch.device("cpu"),
-    #     memory=memory,
-    #     env=env,
-    # )
+    player.play.remote(
+        config=config,
+        mu_net=muzero_network,
+        log_dir=log_dir,
+        device=torch.device("cpu"),
+        memory=memory,
+        env=env,
+    )
 
     trainer.train.remote(
         mu_net=muzero_network,

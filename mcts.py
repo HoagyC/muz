@@ -46,13 +46,7 @@ def search(
 
         frame_t = torch.tensor(current_frame, device=device)
         init_latent = mu_net.represent(frame_t.unsqueeze(0))[0]
-        if random.random() < 0.01:
-            print(
-                torch.mean(frame_t),
-                torch.var(frame_t),
-                torch.mean(init_latent),
-                torch.var(init_latent),
-            )
+
         init_policy, init_val = [x[0] for x in mu_net.predict(init_latent.unsqueeze(0))]
 
         # Getting probabilities from logits and a scalar value from the categorical support
@@ -245,9 +239,9 @@ class Trainer:
                 # We must do tthis sequentially, as the input to the dynamics function requires the output
                 # from the previous dynamics function
 
-                target_value_stepi = target_values[:, i]
-                target_reward_stepi = target_rewards[:, i]
-                target_policy_stepi = target_policies[:, i]
+                target_value_step_i = target_values[:, i]
+                target_reward_step_i = target_rewards[:, i]
+                target_policy_step_i = target_policies[:, i]
                 print_timing("make target")
 
                 if config["consistency_loss"]:
@@ -269,40 +263,45 @@ class Trainer:
                 # network converges to a maximum rather than increasing linearly with depth
                 new_latents.register_hook(lambda grad: grad * 0.5)
 
-                target_reward_sup_i = scalar_to_support(
-                    target_reward_stepi, half_width=config["support_width"]
-                )
+                # target_reward_sup_i = scalar_to_support(
+                #     target_reward_stepi, half_width=config["support_width"]
+                # )
 
-                target_value_sup_i = scalar_to_support(
-                    target_value_stepi, half_width=config["support_width"]
-                )
+                # target_value_sup_i = scalar_to_support(
+                #     target_value_stepi, half_width=config["support_width"]
+                # )
+
                 print_timing("discrete to scalar")
 
                 # Cutting off cases where there's not enough data for a full rollout
 
                 # The muzero paper calculates the loss as the squared difference between scalars
                 # but CrossEntropyLoss is used here for a more stable value loss when large values are encountered
-                value_loss = mu_net.value_loss(
-                    pred_value_logits[screen_t], target_value_sup_i[screen_t]
-                )
+
                 pred_values = support_to_scalar(
                     torch.softmax(pred_value_logits[screen_t], dim=1)
                 )
-                vvar = torch.var(pred_values)
-                if vvar > 0.01:
-                    print(vvar, torch.var(target_value_stepi))
+                pred_rewards = support_to_scalar(
+                    torch.softmax(pred_reward_logits[screen_t], dim=1)
+                )
+                vvar = torch.var(pred_rewards)
+                # if vvar > 0.01:
+                #     print(vvar, torch.var(target_reward_step_i))
+                # if vvar > 10:
+                #     print(pred_rewards, target_reward_step_i)
+                #     print(i)
                 val_diff += sum(
-                    target_value_stepi[screen_t]
+                    target_value_step_i[screen_t]
                     - support_to_scalar(
                         torch.softmax(pred_value_logits[screen_t], dim=1)
                     )
                 )
-
-                reward_loss = mu_net.reward_loss(
-                    pred_reward_logits[screen_t], target_reward_sup_i[screen_t]
-                )
+                val_loss = torch.nn.MSELoss()
+                reward_loss = torch.nn.MSELoss()
+                value_loss = val_loss(pred_values, target_value_step_i[screen_t])
+                reward_loss = reward_loss(pred_rewards, target_reward_step_i[screen_t])
                 policy_loss = mu_net.policy_loss(
-                    pred_policy_logits[screen_t], target_policy_stepi[screen_t]
+                    pred_policy_logits[screen_t], target_policy_step_i[screen_t]
                 )
 
                 if config["consistency_loss"]:
@@ -312,10 +311,10 @@ class Trainer:
                 else:
                     consistency_loss = 0
 
-                batch_policy_loss += (policy_loss * weights[screen_t]).sum()
-                batch_value_loss += (value_loss * weights[screen_t]).sum()
-                batch_reward_loss += (reward_loss * weights[screen_t]).sum()
-                batch_consistency_loss += (consistency_loss * weights[screen_t]).sum()
+                batch_policy_loss += (policy_loss * weights[screen_t]).mean()
+                batch_value_loss += (value_loss * weights[screen_t]).mean()
+                batch_reward_loss += (reward_loss * weights[screen_t]).mean()
+                batch_consistency_loss += (consistency_loss * weights[screen_t]).mean()
                 latents = new_latents
                 # print(batch_value_loss, batch_consistency_loss)
 
