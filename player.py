@@ -90,6 +90,7 @@ class Player:
                     env.render("human")
 
                 frame, reward, over, _ = env.step(action)
+                # print(tree.children[0].reward, reward)
 
                 # if config["env_name"] == "CartPole-v1" and frames % 20 > 0:
                 #     reward = 0

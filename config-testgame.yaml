@@ -1,47 +1,48 @@
-env_name: "MsPacman-v0"
+env_name: "testgame"
 obs_type: "image"
 obs_size: [96, 96, 3]
 seed: 0 
 
 # Training params
-learning_rate: 0.2
+learning_rate: 0.002
 learning_rate_decay: 0.9
 weight_decay: 0.0001
 root_dirichlet_alpha: 0.25
 explore_frac: 0.25
 val_weight: 2
-discount: 0.997
+discount: 0.988054
 n_batches: 60
-batch_size: 4
+batch_size: 1
 rollout_depth: 5
 reward_depth: 5
-buffer_size: 10
-consistency_loss: True
+buffer_size: 20
+consistency_loss: False
 consistency_weight: 0.5
 reanalyse: True
 reanalyse_n: 1
 grad_clip: 1
-last_n_frames: 4
-prior_weight: 0
+last_n_frames: 4  
+frame_skip: 4
+prior_weight: 1
 
 # Replay params
-priority_replay: False
+priority_replay: True
 priority_alpha: 1
 priority_beta: 1
 
 # Model params
 latent_size: 20
 channel_list: [16, 32]
-support_width: 50
-n_simulations: 20
+support_width: 25
+n_simulations: 10
 
 # Setup params  
 log_dir: "runs"
-log_name: "2022-04-12_11.46.48MsPacman-v0"
+log_name: "last"
 debug: False
-render: True
+render: False 
 print_simple: True
 max_games: 400
-temp_time: 5
+temp_time: 50
 
-max_frames: 3000  
+max_frames: 3000
