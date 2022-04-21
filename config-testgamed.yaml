@@ -1,18 +1,18 @@
 env_name: "testgamed"
-obs_type: "cartpole"
+obs_type: "test"
 obs_size: [4]
 seed: 0 
 
 # Training params
-learning_rate: 0.002
+learning_rate: 0.2
 learning_rate_decay: 0.9
-weight_decay: 0.0001
+weight_decay: 0
 root_dirichlet_alpha: 0.25
 explore_frac: 0.25
 val_weight: 2
 discount: 0.988054
 n_batches: 60
-batch_size: 1
+batch_size: 40
 rollout_depth: 5
 reward_depth: 5
 buffer_size: 20
@@ -24,7 +24,10 @@ grad_clip: 1
 last_n_frames: 4  
 frame_skip: 4
 prior_weight: 1
+momentum: 0
 
+temp1: 1000
+temp2: 2000
 # Replay params
 priority_replay: True
 priority_alpha: 1
@@ -38,7 +41,7 @@ n_simulations: 10
 
 # Setup params  
 log_dir: "runs"
-log_name: "last"
+log_name: "None"
 debug: False
 render: False 
 print_simple: True

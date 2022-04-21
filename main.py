@@ -13,7 +13,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from mcts import Trainer
 from player import Player
-from models import MuZeroCartNet, MuZeroAtariNet
+from models import MuZeroCartNet, MuZeroAtariNet, TestNet
 from training import GameRecord, Memory, Reanalyser
 from testgame import TestEnv, TestEnvD
 
@@ -29,14 +29,16 @@ def run(config):
     action_size = env.action_space.n
 
     obs_size = config["obs_size"]
-
-    if config["obs_type"] == "cartpole":
+    print(obs_size)
+    if config["obs_type"] in ["cartpole", "test"]:
         obs_size = obs_size[0]
 
     net_type_dict = {
         "cartpole": MuZeroCartNet,
         "image": MuZeroAtariNet,
+        "test": TestNet,
     }
+    print(obs_size)
 
     muzero_class = net_type_dict[config["obs_type"]]
     print(muzero_class)

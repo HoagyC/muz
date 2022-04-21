@@ -12,26 +12,25 @@ class ASpace:
 
 class TestEnv:
     def __init__(self):
-        self.last_val = 0
+        self.counter = 0
         self.action_space = ASpace(2)
+        self.over = False
 
     def step(self, action):
-        img = np.full([210, 120, 3], self.last_val * 30)
+        self.counter += 1
 
-        self.last_val += 1
-        if self.last_val > 6:
-            self.last_val = 0
+        img = np.full([210, 160, 3], (self.counter % 7) * 30, dtype=np.float32)
+        img[0, :] = self.counter
+        reward = (self.counter - 1) % 7
+        if self.counter > 50:
+            self.over = True
 
-        if random.random() < 0.02:
-            over = True
-        else:
-            over = False
-
-        return img, self.last_val, over, False
+        return img, reward, self.over, False
 
     def reset(self):
-        self.last_val = 0
-        return np.full([210, 120, 3], 0)
+        self.counter = 0
+        self.over = 0
+        return np.full([210, 160, 3], (self.counter % 7) * 30, dtype=np.float32)
 
     def close(self):
         pass
@@ -39,26 +38,25 @@ class TestEnv:
 
 class TestEnvD:
     def __init__(self):
-        self.last_val = 0
+        self.counter = 0
         self.action_space = ASpace(2)
+        self.over = False
 
     def step(self, action):
-        img = np.full([4], self.last_val)
+        self.counter += 1
 
-        self.last_val += 1
-        if self.last_val > 6:
-            self.last_val = 0
+        img = np.full([4], self.counter % 7, dtype=np.float32)
+        img[0] = self.counter
+        reward = (self.counter - 1) % 7
+        if self.counter > 50:
+            self.over = True
 
-        if random.random() < 0.02:
-            over = True
-        else:
-            over = False
-
-        return img, self.last_val, over, False
+        return img, reward, self.over, False
 
     def reset(self):
-        self.last_val = 0
-        return np.full([4], 0)
+        self.counter = 0
+        self.over = 0
+        return np.full([4], self.counter % 7, dtype=np.float32)
 
     def close(self):
         pass

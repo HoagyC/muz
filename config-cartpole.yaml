@@ -17,12 +17,16 @@ batch_size: 30
 rollout_depth: 5
 reward_depth: 30
 buffer_size: 50
-consistency_loss: False
+consistency_loss: True
 consistency_weight: 0.5
 reanalyse: True
 reanalyse_n: 1
 grad_clip: 1 # 0 indicates no clipping
 prior_weight: 1
+
+temp1: 1000
+temp2: 2000
+
 
 # Replay params
 priority_replay: False

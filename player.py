@@ -57,9 +57,9 @@ class Player:
                 last_analysed=self.total_games,
             )
 
-            if self.total_frames < 50_000:
+            if self.total_frames < config["temp1"]:
                 temperature = 1
-            elif self.total_frames < 75_000:
+            elif self.total_frames < config["temp2"]:
                 temperature = 0.5
             else:
                 temperature = 0.25

@@ -1,19 +1,21 @@
-import datetime
+# import datetime
 import math
 import os
 import random
 import time
+import datetime
 import yaml
 
 import numpy as np
 import ray
+from matplotlib import pyplot as plt
 
 import torch
 from torch import nn
 
 from torch.utils.tensorboard import SummaryWriter
 
-from models import scalar_to_support, support_to_scalar
+from models import scalar_to_support, support_to_scalar, normalize
 
 
 def search(
@@ -48,10 +50,8 @@ def search(
         init_latent = mu_net.represent(frame_t.unsqueeze(0))[0]
         if random.random() < 0.01:
             print(
-                torch.mean(frame_t),
-                torch.var(frame_t),
-                torch.mean(init_latent),
-                torch.var(init_latent),
+                f"fr mean: {torch.mean(frame_t)}, fr var{torch.var(frame_t)}"
+                + f"la mean: {torch.mean(init_latent)}, la var {torch.var(init_latent)}"
             )
         init_policy, init_val = [x[0] for x in mu_net.predict(init_latent.unsqueeze(0))]
 
@@ -305,6 +305,13 @@ class Trainer:
                 val_loss = torch.nn.MSELoss()
                 reward_loss = torch.nn.MSELoss()
                 value_loss = val_loss(pred_values, target_value_step_i[screen_t])
+                if random.random() < 0.01 and i == 0:
+                    print(
+                        pred_rewards,
+                        target_reward_step_i[screen_t],
+                        torch.mean(images[0, i], dim=0),
+                        images.shape,
+                    )
                 reward_loss = reward_loss(pred_rewards, target_reward_step_i[screen_t])
                 policy_loss = mu_net.policy_loss(
                     pred_policy_logits[screen_t], target_policy_step_i[screen_t]
@@ -386,12 +393,49 @@ class Trainer:
                     self.writer.add_scalar(key, val, total_batches)
 
             if total_batches % 100 == 0:
+                discrete = True if config["env_name"] == "testgamed" else False
+                get_test_graph(mu_net, memory, discrete)
+                self.writer.add_figure("shape", plt.gcf())
                 print(
                     f"Completed {total_batches} total batches of size {config['batch_size']}, took {(time.time() - st)}"
                 )
             print_timing("saving/end")
 
         return metrics_dict
+
+
+def get_test_graph(mu_net, memory, discrete=False):
+    xvals = np.arange(0, 4)
+    yvals = [get_test_numbers(mu_net, i, discrete, memory) for i in xvals]
+    plt.plot(xvals, yvals)
+    plt.ylim(0, 6)
+
+
+def get_test_numbers(mu_net, i, discrete, memory):
+    if discrete:
+        val = i
+        shape = [4]
+        obs = torch.full(shape, val, dtype=torch.float32).unsqueeze(0)
+    else:
+        ndx = ray.get(memory.get_buffer_ndxs.remote())[0]
+        game = ray.get(memory.get_buffer_ndx.remote(ndx))
+        ims, _, _, rewards, _, _ = game.make_target(20, 5, 5)
+
+        print(rewards)
+        print([np.mean(im, axis=(1, 2)) for im in ims])
+        obs = torch.from_numpy(ims[i]).unsqueeze(0)
+
+    print(obs.shape)
+    reward_logits = mu_net.dynamics(
+        mu_net.represent(obs), torch.zeros([2]).unsqueeze(0)
+    )[1].detach()
+
+    return support_to_scalar(
+        torch.softmax(
+            reward_logits,
+            dim=1,
+        )
+    )
 
 
 def backpropagate(search_list, value, minmax, discount):
