@@ -15,7 +15,7 @@ from torch import nn
 
 from torch.utils.tensorboard import SummaryWriter
 
-from models import scalar_to_support, support_to_scalar, normalize
+from models import scalar_to_support, support_to_scalar
 
 
 def search(
