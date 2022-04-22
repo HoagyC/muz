@@ -441,9 +441,10 @@ class TestDynamicsNet(nn.Module):
         self.fc_dyna = nn.Linear(latent_depth, latent_depth)
         self.fc_reward = nn.Linear(latent_depth, support_width)
 
-    def forward(self, x):
-        latent = F.relu(self.fc_dyna(x))
-        reward_logits = self.fc_reward(x)
+    def forward(self, latent, action):
+        concat = torch.concat((latent, action), dim=1)
+        latent = F.relu(self.fc_dyna(concat))
+        reward_logits = self.fc_reward(concat)
         return latent, reward_logits
 
 

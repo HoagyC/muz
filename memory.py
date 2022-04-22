@@ -370,10 +370,10 @@ class Memory:
         depths_l = []
 
         for val in start_vals:
-            # Get the index of the game in the buffer (buf_ndx) and a location in the game (game_ndx)
-            buf_ndx, game_ndx = self.get_ndxs(val)
+            # Get the index of the game in the buffer (game_ndx) and a location in the game (frame_ndx)
+            game_ndx, frame_ndx = self.get_ndxs(val)
 
-            game = self.buffer[buf_ndx]
+            game = self.buffer[game_ndx]
 
             # Gets a series of actions, values, rewards, policies, up to a depth of rollout_depth
             (
@@ -384,10 +384,12 @@ class Memory:
                 target_policies,
                 depth,
             ) = game.make_target(
-                game_ndx,
+                frame_ndx,
                 reward_depth=self.reward_depth,
                 rollout_depth=self.rollout_depth,
             )
+            if frame_ndx == 20:
+                pickle.dump(images[0], open("single_frame20.pkl", "wb"))
 
             # Add tuple to batch
             if self.prioritized_replay:
@@ -404,13 +406,17 @@ class Memory:
             weights_l.append(weight)
             depths_l.append(depth)
 
-        images_t = torch.tensor(np.stack(images_l), dtype=torch.float32)
-        actions_t = torch.tensor(np.stack(actions_l), dtype=torch.int64)
-        target_values_t = torch.tensor(np.stack(target_values_l), dtype=torch.float32)
-        target_policies_t = torch.tensor(
-            np.stack(target_policies_l), dtype=torch.float32
+        images_t = torch.tensor(np.stack(images_l, axis=0), dtype=torch.float32)
+        actions_t = torch.tensor(np.stack(actions_l, axis=0), dtype=torch.int64)
+        target_values_t = torch.tensor(
+            np.stack(target_values_l, axis=0), dtype=torch.float32
         )
-        target_rewards_t = torch.tensor(np.stack(target_rewards_l), dtype=torch.float32)
+        target_policies_t = torch.tensor(
+            np.stack(target_policies_l, axis=0), dtype=torch.float32
+        )
+        target_rewards_t = torch.tensor(
+            np.stack(target_rewards_l, axis=0), dtype=torch.float32
+        )
         weights_t = torch.tensor(weights_l)
         weights_t = weights_t / max(weights_t)
 
@@ -436,65 +442,3 @@ class Memory:
             if l > val:
                 return i - 1, val - self.game_starts_list[i - 1]
         return len(self.buffer) - 1, val - self.game_starts_list[-1]
-
-
-@ray.remote
-class Reanalyser:
-    def __init__(self, config, log_dir, device=torch.device("cpu")):
-        self.device = device
-        self.config = config
-        self.log_dir = log_dir
-
-    def reanalyse(self, mu_net, memory):
-        while True:
-            if "latest_model_dict.pt" in os.listdir(self.log_dir):
-                mu_net = ray.get(
-                    memory.load_model.remote(self.log_dir, mu_net, device=self.device)
-                )
-
-            # No point reanalysing until there are multiple games in the history
-            while True:
-                buffer_len = ray.get(memory.get_buffer_len.remote())
-                train_stats = ray.get(memory.get_data.remote())
-                current_game = train_stats["games"]
-                if buffer_len >= 1 and current_game >= 2:
-                    break
-
-                time.sleep(1)
-
-            mu_net.train()
-            mu_net = mu_net.to(self.device)
-
-            p = ray.get(memory.get_reanalyse_probabilities.remote())
-
-            if len(p) > 0:
-                ndxs = ray.get(memory.get_buffer_ndxs.remote())
-                ndx = np.random.choice(ndxs, p=p)
-                game_rec = ray.get(memory.get_buffer_ndx.remote(ndx))
-                minmax = ray.get(memory.get_minmax.remote())
-
-                vals = game_rec.values
-
-                for i in range(len(game_rec.observations) - 1):
-                    if self.config["obs_type"] == "image":
-                        obs = game_rec.get_last_n(pos=i)
-                    else:
-                        obs = convert_from_int(
-                            game_rec.observations[i], self.config["obs_type"]
-                        )
-
-                    new_root = search(
-                        config=self.config,
-                        mu_net=mu_net,
-                        current_frame=obs,
-                        minmax=minmax,
-                        log_dir=self.log_dir,
-                        device=torch.device("cpu"),
-                    )
-                    vals[i] = new_root.average_val
-
-                memory.update_vals.remote(ndx=ndx, vals=vals)
-                memory.add_priorities.remote(ndx=ndx, reanalysing=True)
-                print(f"Reanalysed game {ndx}")
-            else:
-                time.sleep(5)

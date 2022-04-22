@@ -11,10 +11,11 @@ import ray
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
-from mcts import Trainer
+from trainer import Trainer
 from player import Player
 from models import MuZeroCartNet, MuZeroAtariNet, TestNet
-from training import GameRecord, Memory, Reanalyser
+from memory import GameRecord, Memory
+from reanalyser import Reanalyser
 from testgame import TestEnv, TestEnvD
 
 

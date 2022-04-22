@@ -14,7 +14,7 @@ from torch import nn
 
 from torch.utils.tensorboard import SummaryWriter
 
-from training import GameRecord
+from memory import GameRecord
 from models import scalar_to_support, support_to_scalar, normalize
 from mcts import search
 
@@ -101,7 +101,8 @@ class Player:
                     frame = np.array(frame)
 
                 game_record.add_step(frame, action, reward, tree)
-
+                child = tree.children[0] if tree.children[0] else tree.children[1]
+                print(reward, child.reward)
                 # mcts.update()
 
                 frames += 1

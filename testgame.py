@@ -2,7 +2,7 @@ import random
 
 import numpy as np
 
-from training import Memory
+from memory import Memory
 
 
 class ASpace:
