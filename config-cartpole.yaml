@@ -24,6 +24,9 @@ reanalyse_n: 1
 grad_clip: 1 # 0 indicates no clipping
 prior_weight: 1
 
+temp1: 1000
+temp2: 2000
+
 # Replay params
 priority_replay: False
 priority_alpha: 1
