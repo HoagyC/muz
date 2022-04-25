@@ -100,7 +100,14 @@ class MuZeroCartNet(nn.Module):
             + list(self.repr_net.parameters())
         )
         self.optimizer = torch.optim.SGD(
+<<<<<<< HEAD
             params, lr=lr, weight_decay=self.config["weight_decay"], momentum=0.9
+=======
+            params,
+            lr=lr,
+            weight_decay=self.config["weight_decay"],
+            momentum=self.config["momentum"],
+>>>>>>> origin/testgame
         )
 
     def predict(self, latent):
@@ -122,6 +129,7 @@ class MuZeroAtariNet(nn.Module):
         self.config = config
 
         self.x_pad, self.y_pad = 0, 0
+        print(obs_size)
         assert len(obs_size) == 3
 
         self.y_size, self.x_size, self.n_channels = obs_size
@@ -154,6 +162,7 @@ class MuZeroAtariNet(nn.Module):
             self.latent_depth,
             self.channel_list,
             self.config["last_n_frames"],
+            self.config["dropout"],
         )
 
         self.policy_loss = nn.CrossEntropyLoss(reduction="none")
@@ -196,7 +205,7 @@ def conv3x3(in_channels, out_channels, stride=1):
 
 
 class ResBlockSmall(torch.nn.Module):
-    def __init__(self, num_channels, stride=1):
+    def __init__(self, num_channels, stride=1, dropout=0.2):
         super().__init__()
         self.conv1 = conv3x3(num_channels, num_channels, stride)
         nn.init.kaiming_normal_(self.conv1.weight)
@@ -204,14 +213,23 @@ class ResBlockSmall(torch.nn.Module):
         self.conv2 = conv3x3(num_channels, num_channels)
         nn.init.kaiming_normal_(self.conv2.weight)
         self.bn2 = torch.nn.BatchNorm2d(num_channels)
-        self.dropout = nn.Dropout(0.2)
+        self.dropout1 = nn.Dropout(dropout)
+        self.dropout2 = nn.Dropout(dropout)
 
     def forward(self, x):
+<<<<<<< HEAD
         out = F.dropout(x, 0.5)
         out = self.conv1(out)
         out = self.bn1(out)
         out = F.relu(out)
         out = F.dropout(out, 0.2)
+=======
+        out = self.dropout1(x)
+        out = self.conv1(out)
+        out = self.bn1(out)
+        out = F.relu(out)
+        out = self.dropout2(out)
+>>>>>>> origin/testgame
         out = self.conv2(out)
         out = self.bn2(out)
         out += x
@@ -294,7 +312,9 @@ class AtariDereprNet(nn.Module):
 
 
 class AtariRepresentationNet(nn.Module):
-    def __init__(self, x_pad, y_pad, latent_depth, channel_list, last_n_frames):
+    def __init__(
+        self, x_pad, y_pad, latent_depth, channel_list, last_n_frames, dropout
+    ):
         super().__init__()
 
         self.pad = (0, x_pad, 0, y_pad)
@@ -304,8 +324,8 @@ class AtariRepresentationNet(nn.Module):
         )
         self.batch_norm1 = nn.BatchNorm2d(num_features=channel_list[0], momentum=0.1)
 
-        self.res1 = ResBlockSmall(channel_list[0])
-        self.res2 = ResBlockSmall(channel_list[0])
+        self.res1 = ResBlockSmall(channel_list[0], dropout=dropout)
+        self.res2 = ResBlockSmall(channel_list[0], dropout=dropout)
 
         self.conv2 = nn.Conv2d(
             channel_list[0], channel_list[1], stride=2, kernel_size=3, padding=1
@@ -354,6 +374,102 @@ class AtariRepresentationNet(nn.Module):
 
         assert out.shape[-2:] == torch.Size([6, 6])
         return out
+
+
+class TestNet(nn.Module):
+    def __init__(self, action_size, obs_size, config):
+        super().__init__()
+        self.config = config
+
+        print(obs_size)
+        assert len(obs_size) == 3
+
+        self.action_size = action_size
+        self.obs_size = obs_size
+        self.support_width = config["support_width"]
+        self.channel_list = config["channel_list"]
+        self.latent_depth = self.channel_list[-1]
+        self.latent_area = self.x_size_final * self.y_size_final
+
+        self.dyna_net = TestDynamicsNet(
+            self.latent_depth, self.support_width, self.action_size
+        )
+        self.pred_net = TestPredictionNet(
+            self.latent_depth, self.support_width, self.action_size
+        )
+        self.repr_net = TestRepresentationNet(
+            self.latent_depth,
+            self.config["last_n_frames"],
+        )
+
+        self.policy_loss = nn.CrossEntropyLoss(reduction="none")
+        self.reward_loss = nn.CrossEntropyLoss(reduction="none")
+        self.value_loss = nn.CrossEntropyLoss(reduction="none")
+        self.cos_sim = nn.CosineSimilarity(dim=1)
+
+    def consistency_loss(self, x1, x2):
+        assert x1.shape == x2.shape
+        batch_l = x1.shape[0]
+        return -self.cos_sim(x1.reshape(batch_l, -1), x2.reshape(batch_l, -1))
+
+    def init_optim(self, lr):
+        params = (
+            list(self.pred_net.parameters())
+            + list(self.dyna_net.parameters())
+            + list(self.repr_net.parameters())
+        )
+        self.optimizer = torch.optim.SGD(
+            params, lr=lr, weight_decay=self.config["weight_decay"]
+        )
+
+    def predict(self, latent):
+        policy, value = self.pred_net(latent)
+        return policy, value
+
+    def dynamics(self, latent, action):
+        latent, reward = self.dyna_net(latent, action)
+        return latent, reward
+
+    def represent(self, observation):
+        latent = self.repr_net(observation)
+        return latent
+
+
+class TestRepresentationNet(nn.Module):
+    def __init__(self, latent_depth, n_frames):
+        super().__init__()
+        self.fc1 = nn.Linear(n_frames * 4 * 96 * 96, latent_depth)
+
+    def forward(self, x):
+        out = x.flatten()
+        assert len(out) == 16 * 96 * 96
+        out = F.relu(self.fc1(out))
+        return out
+
+
+class TestDynamicsNet(nn.Module):
+    def __init__(self, latent_depth, support_width, action_size):
+        super().__init__()
+        self.fc_dyna = nn.Linear(latent_depth, latent_depth)
+        self.fc_reward = nn.Linear(latent_depth, support_width)
+
+    def forward(self, latent, action):
+        concat = torch.concat((latent, action), dim=1)
+        latent = F.relu(self.fc_dyna(concat))
+        reward_logits = self.fc_reward(concat)
+        return latent, reward_logits
+
+
+class TestPredictionNet(nn.Module):
+    def __init__(self, latent_depth, support_width, action_size):
+        super().__init__()
+        self.fc_value = nn.Linear(self.latent_depth, support_width)
+        self.fc_policy = nn.Linear(self.latent_depth, action_size)
+
+    def forward(self, x):
+        policy_logits = self.fc_policy(x)
+        value_logits = self.fc_value(x)
+        return policy_logits, value_logits
 
 
 class AtariDynamicsNet(nn.Module):

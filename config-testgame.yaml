@@ -15,8 +15,13 @@ n_batches: 60
 batch_size: 5
 rollout_depth: 5
 reward_depth: 5
+<<<<<<< HEAD
 buffer_size: 20
 consistency_loss: True
+=======
+buffer_size: 1 
+consistency_loss: False
+>>>>>>> origin/testgame
 consistency_weight: 0.5
 reanalyse: True
 reanalyse_n: 1
@@ -24,6 +29,13 @@ grad_clip: 1
 last_n_frames: 4  
 frame_skip: 4
 prior_weight: 1
+<<<<<<< HEAD
+=======
+dropout: 0.2
+
+temp1: 1000
+temp2: 2000
+>>>>>>> origin/testgame
 
 # Replay params
 priority_replay: True
@@ -38,7 +50,11 @@ n_simulations: 10
 
 # Setup params  
 log_dir: "runs"
+<<<<<<< HEAD
 log_name: "last"
+=======
+log_name: "testgame_low"
+>>>>>>> origin/testgame
 debug: False
 render: False 
 print_simple: True

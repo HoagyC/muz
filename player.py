@@ -14,7 +14,7 @@ from torch import nn
 
 from torch.utils.tensorboard import SummaryWriter
 
-from training import GameRecord
+from memory import GameRecord
 from models import scalar_to_support, support_to_scalar, normalize
 from mcts import search
 
@@ -90,6 +90,7 @@ class Player:
                     env.render("human")
 
                 frame, reward, over, _ = env.step(action)
+                # print(tree.children[0].reward, reward)
 
                 # if config["env_name"] == "CartPole-v1" and frames % 20 > 0:
                 #     reward = 0
@@ -100,6 +101,12 @@ class Player:
                     frame = np.array(frame)
 
                 game_record.add_step(frame, action, reward, tree)
+<<<<<<< HEAD
+=======
+                child = tree.children[0] if tree.children[0] else tree.children[1]
+                print(reward, child.reward)
+                # mcts.update()
+>>>>>>> origin/testgame
 
                 frames += 1
                 score += reward

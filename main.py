@@ -11,27 +11,41 @@ import ray
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
-from mcts import Trainer
+from trainer import Trainer
 from player import Player
+<<<<<<< HEAD
 from models import MuZeroCartNet, MuZeroAtariNet
 from training import GameRecord, Memory, Reanalyser
 from testgame import TestEnv
+=======
+from models import MuZeroCartNet, MuZeroAtariNet, TestNet
+from memory import GameRecord, Memory
+from reanalyser import Reanalyser
+from testgame import TestEnv, TestEnvD
+>>>>>>> origin/testgame
 
 
 def run(config):
-    env = gym.make(config["env_name"])
+    if config["env_name"] == "testgame":
+        env = TestEnv()
+    elif config["env_name"] == "testgamed":
+        env = TestEnvD()
+    else:
+        env = gym.make(config["env_name"])
 
     action_size = env.action_space.n
 
     obs_size = config["obs_size"]
-
-    if config["obs_type"] == "cartpole":
+    print(obs_size)
+    if config["obs_type"] in ["cartpole", "test"]:
         obs_size = obs_size[0]
 
     net_type_dict = {
         "cartpole": MuZeroCartNet,
         "image": MuZeroAtariNet,
+        "test": TestNet,
     }
+    print(obs_size)
 
     muzero_class = net_type_dict[config["obs_type"]]
     print(muzero_class)
@@ -87,6 +101,7 @@ def run(config):
     train_gpus = 0.9 if torch.cuda.is_available() else 0
     trainer = Trainer.options(num_cpus=train_cpus, num_gpus=train_gpus).remote()
 
+<<<<<<< HEAD
     player.play.remote(
         config=config,
         mu_net=muzero_network,
@@ -95,6 +110,17 @@ def run(config):
         memory=memory,
         env=env,
     )
+=======
+    if sys.argv[2] != "train":
+        player.play.remote(
+            config=config,
+            mu_net=muzero_network,
+            log_dir=log_dir,
+            device=torch.device("cpu"),
+            memory=memory,
+            env=env,
+        )
+>>>>>>> origin/testgame
 
     trainer.train.remote(
         mu_net=muzero_network,

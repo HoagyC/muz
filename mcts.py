@@ -1,12 +1,14 @@
-import datetime
+# import datetime
 import math
 import os
 import random
 import time
+import datetime
 import yaml
-
+import pickle
 import numpy as np
 import ray
+from matplotlib import pyplot as plt
 
 import torch
 from torch import nn
@@ -46,7 +48,15 @@ def search(
 
         frame_t = torch.tensor(current_frame, device=device)
         init_latent = mu_net.represent(frame_t.unsqueeze(0))[0]
+<<<<<<< HEAD
 
+=======
+        if random.random() < 0.01:
+            print(
+                f"fr mean: {torch.mean(frame_t)}, fr var{torch.var(frame_t)}"
+                + f"la mean: {torch.mean(init_latent)}, la var {torch.var(init_latent)}"
+            )
+>>>>>>> origin/testgame
         init_policy, init_val = [x[0] for x in mu_net.predict(init_latent.unsqueeze(0))]
 
         # Getting probabilities from logits and a scalar value from the categorical support
@@ -129,6 +139,7 @@ def search(
     return root_node
 
 
+<<<<<<< HEAD
 @ray.remote
 class Trainer:
     def __init__(self):
@@ -388,6 +399,8 @@ class Trainer:
         return metrics_dict
 
 
+=======
+>>>>>>> origin/testgame
 def backpropagate(search_list, value, minmax, discount):
     """Going backward through the visited nodes, we increase the visit count of each by one
     and set the value, discounting the value at the node ahead, but then adding the reward"""
@@ -574,13 +587,6 @@ def add_dirichlet(prior, dirichlet_alpha, explore_frac):
 
 
 last_time = datetime.datetime.now()
-
-
-def print_timing(tag):
-    global last_time
-    now = datetime.datetime.now()
-    # print(f"{tag:20} {now - last_time}")
-    last_time = now
 
 
 if __name__ == "__main__":
