@@ -225,7 +225,6 @@ class Memory:
         self.minmax = MinMax()
         if os.path.exists(os.path.join("buffers", config["env_name"])):
             self.load_buffer()
-            print(self.buffer_ndxs)
         else:
             self.buffer = []
             self.buffer_ndxs = []
@@ -333,7 +332,6 @@ class Memory:
     def save_game(self, game, n_frames):
         # If reached the max size, remove the oldest GameRecord, and update stats accordingly
         while len(self.buffer) >= self.size:
-            print(self.buffer_ndxs)
             self.buffer.pop(0)
             self.buffer_ndxs.pop(0)
 

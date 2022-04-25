@@ -23,16 +23,13 @@ reanalyse: True
 reanalyse_n: 1
 grad_clip: 1 # 0 indicates no clipping
 prior_weight: 1
+momentum: 0.9
 
 temp1: 1000
 temp2: 2000
 
-<<<<<<< HEAD
-=======
-
->>>>>>> origin/testgame
 # Replay params
-priority_replay: False
+priority_replay: True
 priority_alpha: 1
 priority_beta: 1
 

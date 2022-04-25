@@ -100,14 +100,10 @@ class MuZeroCartNet(nn.Module):
             + list(self.repr_net.parameters())
         )
         self.optimizer = torch.optim.SGD(
-<<<<<<< HEAD
-            params, lr=lr, weight_decay=self.config["weight_decay"], momentum=0.9
-=======
             params,
             lr=lr,
             weight_decay=self.config["weight_decay"],
             momentum=self.config["momentum"],
->>>>>>> origin/testgame
         )
 
     def predict(self, latent):
@@ -217,19 +213,11 @@ class ResBlockSmall(torch.nn.Module):
         self.dropout2 = nn.Dropout(dropout)
 
     def forward(self, x):
-<<<<<<< HEAD
-        out = F.dropout(x, 0.5)
-        out = self.conv1(out)
-        out = self.bn1(out)
-        out = F.relu(out)
-        out = F.dropout(out, 0.2)
-=======
         out = self.dropout1(x)
         out = self.conv1(out)
         out = self.bn1(out)
         out = F.relu(out)
         out = self.dropout2(out)
->>>>>>> origin/testgame
         out = self.conv2(out)
         out = self.bn2(out)
         out += x

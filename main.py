@@ -13,16 +13,10 @@ from torch.utils.tensorboard import SummaryWriter
 
 from trainer import Trainer
 from player import Player
-<<<<<<< HEAD
-from models import MuZeroCartNet, MuZeroAtariNet
-from training import GameRecord, Memory, Reanalyser
-from testgame import TestEnv
-=======
 from models import MuZeroCartNet, MuZeroAtariNet, TestNet
 from memory import GameRecord, Memory
 from reanalyser import Reanalyser
 from testgame import TestEnv, TestEnvD
->>>>>>> origin/testgame
 
 
 def run(config):
@@ -101,16 +95,6 @@ def run(config):
     train_gpus = 0.9 if torch.cuda.is_available() else 0
     trainer = Trainer.options(num_cpus=train_cpus, num_gpus=train_gpus).remote()
 
-<<<<<<< HEAD
-    player.play.remote(
-        config=config,
-        mu_net=muzero_network,
-        log_dir=log_dir,
-        device=torch.device("cpu"),
-        memory=memory,
-        env=env,
-    )
-=======
     if sys.argv[2] != "train":
         player.play.remote(
             config=config,
@@ -120,7 +104,6 @@ def run(config):
             memory=memory,
             env=env,
         )
->>>>>>> origin/testgame
 
     trainer.train.remote(
         mu_net=muzero_network,
@@ -166,7 +149,8 @@ def run(config):
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         try:
-            config = yaml.safe_load(open("config-" + sys.argv[1] + ".yaml", "r"))
+            config_path = os.path.join("configs", "config-" + sys.argv[1] + ".yaml")
+            config = yaml.safe_load(open(config_path, "r"))
         except FileNotFoundError:
             print(f"No config file for game '{sys.argv[1]}'")
     else:

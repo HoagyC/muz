@@ -110,7 +110,6 @@ class Trainer:
             # requiring the dynamics function to learn to represent the s, a -> s function
             # All batch tensors are index first by batch x rollout
             init_images = images[:, 0]
-            print(torch.mean(init_images), torch.var(init_images))
             print_timing("images0")
 
             latents = mu_net.represent(init_images)
@@ -185,15 +184,7 @@ class Trainer:
                 val_loss = torch.nn.MSELoss()
                 reward_loss = torch.nn.MSELoss()
                 value_loss = val_loss(pred_values, target_value_step_i[screen_t])
-                if total_batches % 100 == 50:
-                    print(
-                        i,
-                        pred_rewards,
-                        target_reward_step_i[screen_t],
-                        torch.mean(images[0, i], dim=0),
-                        images.shape,
-                    )
-                    print(i, pred_values, target_value_step_i[screen_t])
+
                 reward_loss = reward_loss(pred_rewards, target_reward_step_i[screen_t])
                 policy_loss = mu_net.policy_loss(
                     pred_policy_logits[screen_t], target_policy_step_i[screen_t]
@@ -275,9 +266,6 @@ class Trainer:
                     self.writer.add_scalar(key, val, total_batches)
 
             if total_batches % 100 == 0:
-                discrete = True if config["env_name"] == "testgamed" else False
-                test_whole_game(mu_net, memory)
-                self.writer.add_figure("shape", plt.gcf())
                 print(
                     f"Completed {total_batches} total batches of size {config['batch_size']}, took {(time.time() - st)}"
                 )
@@ -301,8 +289,8 @@ def test_whole_game(mu_net, memory):
         latent = mu_net.represent(obs)
         _, val_logits = mu_net.predict(latent)
         _, reward_logits = mu_net.dynamics(latent, acts)
-        val_logits.detach_()
-        reward_logits.detach_()
+        val_logits = val_logits.detach()
+        reward_logits = reward_logits.detach()
         rew = support_to_scalar(torch.softmax(reward_logits, dim=1))
         val = support_to_scalar(torch.softmax(val_logits, dim=1))
 

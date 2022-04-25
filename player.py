@@ -101,12 +101,6 @@ class Player:
                     frame = np.array(frame)
 
                 game_record.add_step(frame, action, reward, tree)
-<<<<<<< HEAD
-=======
-                child = tree.children[0] if tree.children[0] else tree.children[1]
-                print(reward, child.reward)
-                # mcts.update()
->>>>>>> origin/testgame
 
                 frames += 1
                 score += reward
