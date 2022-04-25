@@ -220,6 +220,8 @@ class Memory:
         self.game_starts_list = []
 
         self.reward_depth = config["reward_depth"]
+        self.reward_steps = config["reward_steps"]
+        self.tau = config["tau"]
         self.rollout_depth = config["rollout_depth"]
         self.priorities = []
         self.minmax = MinMax()
@@ -319,15 +321,13 @@ class Memory:
         self.save_core_stats()
 
     def save_core_stats(self, total_batches=None):
+        stat_dict = {
+            "steps": self.total_frames,
+            "games": self.total_games,
+            "batches": self.total_batches,
+        }
         with open(os.path.join(self.log_dir, "data.yaml"), "w+") as f:
-            yaml.dump(
-                {
-                    "steps": self.total_frames,
-                    "games": self.total_games,
-                    "batches": self.total_batches,
-                },
-                f,
-            )
+            yaml.dump(stat_dict, f)
 
     def save_game(self, game, n_frames):
         # If reached the max size, remove the oldest GameRecord, and update stats accordingly
@@ -342,6 +342,14 @@ class Memory:
         self.total_frames += n_frames
         self.save_buffer()
         self.save_core_stats
+
+    def get_reward_depth(self, val, tau=0.3, total_steps=100_000, max_depth=5):
+        # Varying reward depth depending on the length of time since the trajectory was generated
+        # Follows thw formula in A.4 of EfficientZero paper
+        steps_ago = self.total_vals - val
+        depth = max_depth - np.floor((steps_ago / (tau * total_steps)))
+        depth = int(np.clip(depth, 1, max_depth))
+        return depth
 
     def get_batch(self, batch_size=40):
         batch = []
@@ -373,6 +381,10 @@ class Memory:
 
             game = self.buffer[game_ndx]
 
+            reward_depth = self.get_reward_depth(
+                val, self.tau, self.reward_steps, self.reward_depth
+            )
+
             # Gets a series of actions, values, rewards, policies, up to a depth of rollout_depth
             (
                 images,
@@ -386,8 +398,6 @@ class Memory:
                 reward_depth=self.reward_depth,
                 rollout_depth=self.rollout_depth,
             )
-            if frame_ndx == 20:
-                pickle.dump(images[0], open("single_frame20.pkl", "wb"))
 
             # Add tuple to batch
             if self.prioritized_replay:

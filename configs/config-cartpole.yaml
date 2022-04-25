@@ -28,8 +28,12 @@ momentum: 0.9
 temp1: 1000
 temp2: 2000
 
+# EfficientZero
+tau: 0.3
+reward_steps: 1000
+
 # Replay params
-priority_replay: True
+priority_replay: False
 priority_alpha: 1
 priority_beta: 1
 
