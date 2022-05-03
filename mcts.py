@@ -60,6 +60,15 @@ def search(
             config["explore_frac"],
         )
 
+        if config["value_prefix"]:
+            # Hidden size must be (num_layers, batch_size, hidden_size)
+            init_lstm_hiddens = (
+                torch.zeros(1, 1, config["lstm_hidden_size"]).detach(),
+                torch.zeros(1, 1, config["lstm_hidden_size"]).detach(),
+            )
+        else:
+            init_lstm_hiddens = None
+
         # initialize the search tree with a root node
         root_node = TreeNode(
             latent=init_latent,
@@ -69,6 +78,7 @@ def search(
             minmax=minmax,
             config=config,
             num_visits=0,
+            lstm_hiddens=init_lstm_hiddens,
         )
 
         for i in range(config["n_simulations"]):
@@ -84,6 +94,7 @@ def search(
                 policy_pred = current_node.pol_pred
                 latent = current_node.latent
                 action = current_node.pick_action()
+                lstm_hiddens = current_node.lstm_hiddens
 
                 # if we pick an action that's been picked before we don't need to run the model to explore it
                 if current_node.children[action] is None:
@@ -97,9 +108,17 @@ def search(
                     # and the reward gained
                     # then estimate the policy and value at this new state
 
-                    latent, reward = [
-                        x[0] for x in mu_net.dynamics(latent.unsqueeze(0), action_t)
-                    ]
+                    if config["value_prefix"]:
+                        latent, reward, new_hiddens = mu_net.dynamics(
+                            latent.unsqueeze(0), action_t, lstm_hiddens
+                        )
+                        latent = latent.squeeze_(0)
+                        reward = reward.squeeze_(0)
+
+                    else:
+                        latent, reward = [
+                            x[0] for x in mu_net.dynamics(latent.unsqueeze(0), action_t)
+                        ]
                     new_policy, new_val = [
                         x[0] for x in mu_net.predict(latent.unsqueeze(0))
                     ]
@@ -117,6 +136,7 @@ def search(
                         reward=reward,
                         minmax=minmax,
                         config=config,
+                        lstm_hiddens=new_hiddens,
                     )
 
                     # We have reached a new node and therefore this is the end of the simulation
@@ -158,6 +178,7 @@ class TreeNode:
         minmax=None,
         config=None,
         num_visits=1,
+        lstm_hiddens=None,
     ):
 
         self.action_size = action_size
@@ -172,8 +193,11 @@ class TreeNode:
 
         self.minmax = minmax
         self.config = config
+        self.lstm_hiddens = lstm_hiddens
 
-    def insert(self, action_n, latent, val_pred, pol_pred, reward, minmax, config):
+    def insert(
+        self, action_n, latent, val_pred, pol_pred, reward, minmax, config, lstm_hiddens
+    ):
         # The implementation here differs from the open MuZero (werner duvaud)
         # by only initializing tree nodes when they are chosen, rather than when their parent is chosen
         if self.children[action_n] is None:
@@ -186,6 +210,7 @@ class TreeNode:
                 reward=reward,
                 minmax=minmax,
                 config=self.config,
+                lstm_hiddens=lstm_hiddens,
             )
 
             self.children[action_n] = new_child

@@ -129,7 +129,9 @@ class GameRecord:
 
         with torch.no_grad():
             # We get a reward, value and policy for each step in the rollout of our hidden state
-            target_rewards = []
+            target_rewards = (
+                []
+            )  # If using value prefix then these are cumulative rewards
             target_values = []
             target_policies = []
 
@@ -139,7 +141,10 @@ class GameRecord:
             actual_rollout_depth = min(rollout_depth, game_len - ndx)
 
             for i in range(actual_rollout_depth):
-                target_rewards.append(self.rewards[ndx + i])
+                if self.config["value_prefix"]:
+                    target_rewards.append(sum(self.rewards[ndx : ndx + i + 1]))
+                else:
+                    target_rewards.append(self.rewards[ndx + i])
 
                 # If we have an estimated value at the current index + reward_depth
                 # then this is our base value (after discounting)
@@ -189,6 +194,8 @@ class GameRecord:
             target_policies_a = self.pad_target(target_policies, unused_rollout)
             target_values_a = self.pad_target(target_values, unused_rollout)
             target_rewards_a = self.pad_target(target_rewards, unused_rollout)
+            if len(target_rewards_a) > 5:
+                print(target_rewards_a, target_rewards_a.shape)
 
             return (
                 images_a,
@@ -220,7 +227,7 @@ class Memory:
         self.game_starts_list = []
 
         self.reward_depth = config["reward_depth"]
-        self.reward_steps = config["reward_steps"]
+        self.total_training_steps = config["total_training_steps"]
         self.tau = config["tau"]
         self.rollout_depth = config["rollout_depth"]
         self.priorities = []
@@ -345,7 +352,7 @@ class Memory:
 
     def get_reward_depth(self, val, tau=0.3, total_steps=100_000, max_depth=5):
         # Varying reward depth depending on the length of time since the trajectory was generated
-        # Follows thw formula in A.4 of EfficientZero paper
+        # Follows the formula in A.4 of EfficientZero paper
         steps_ago = self.total_vals - val
         depth = max_depth - np.floor((steps_ago / (tau * total_steps)))
         depth = int(np.clip(depth, 1, max_depth))
@@ -382,7 +389,7 @@ class Memory:
             game = self.buffer[game_ndx]
 
             reward_depth = self.get_reward_depth(
-                val, self.tau, self.reward_steps, self.reward_depth
+                val, self.tau, self.total_training_steps, self.reward_depth
             )
 
             # Gets a series of actions, values, rewards, policies, up to a depth of rollout_depth

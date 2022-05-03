@@ -25,10 +25,23 @@ last_n_frames: 4
 frame_skip: 4
 prior_weight: 1
 
+dropout: 0.2
+temp1: 1000
+temp2: 2000
+
+tau: 0.3
+total_training_steps: 100_000
+
 # Replay params
 priority_replay: True
 priority_alpha: 1
 priority_beta: 1
+
+#lstm params
+value_prefix: True
+lstm_hidden_size: 512
+val_prefix_size: 32
+reward_channels: 16
 
 # Model params
 latent_size: 20

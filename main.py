@@ -39,9 +39,11 @@ def run(config):
         "image": MuZeroAtariNet,
         "test": TestNet,
     }
-    print(obs_size)
+
+    print(f"Observation size: {obs_size}")
 
     muzero_class = net_type_dict[config["obs_type"]]
+
     print(muzero_class)
     muzero_network = muzero_class(action_size, obs_size, config)
     muzero_network.init_optim(config["learning_rate"])

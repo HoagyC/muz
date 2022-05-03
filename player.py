@@ -62,7 +62,7 @@ class Player:
             elif self.total_frames < config["temp2"]:
                 temperature = 0.5
             else:
-                temperature = 0.25
+                temperature = 0
             score = 0
 
             if self.total_games % 10 == 0 and self.total_games > 0:

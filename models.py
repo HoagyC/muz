@@ -10,6 +10,37 @@ import random
 import cv2
 
 
+def conv3x3(in_channels, out_channels, stride=1):
+    return torch.nn.Conv2d(
+        in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False
+    )
+
+
+class ResBlockSmall(torch.nn.Module):
+    def __init__(self, num_channels, stride=1, dropout=0.2):
+        super().__init__()
+        self.conv1 = conv3x3(num_channels, num_channels, stride)
+        nn.init.kaiming_normal_(self.conv1.weight)
+        self.bn1 = torch.nn.BatchNorm2d(num_channels)
+        self.conv2 = conv3x3(num_channels, num_channels)
+        nn.init.kaiming_normal_(self.conv2.weight)
+        self.bn2 = torch.nn.BatchNorm2d(num_channels)
+        self.dropout1 = nn.Dropout(dropout)
+        self.dropout2 = nn.Dropout(dropout)
+
+    def forward(self, x):
+        out = self.dropout1(x)
+        out = self.conv1(out)
+        out = self.bn1(out)
+        out = F.relu(out)
+        out = self.dropout2(out)
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out += x
+        out = F.relu(out)
+        return out
+
+
 class CartRepr(nn.Module):
     def __init__(self, obs_size, latent_size):
         super().__init__()
@@ -51,6 +82,35 @@ class CartDyna(nn.Module):
         return new_latent, reward_logits
 
 
+class CartDynaLSTM(nn.Module):
+    def __init__(self, action_size, latent_size, support_width, lstm_hidden_size):
+        self.latent_size = latent_size
+        self.action_size = action_size
+        self.full_width = (2 * support_width) + 1
+        super().__init__()
+
+        self.lstm = nn.LSTM(input_size=self.latent_size, hidden_size=lstm_hidden_size)
+        self.fc1 = nn.Linear(latent_size + action_size, latent_size)
+        self.fc2 = nn.Linear(latent_size, latent_size)
+        self.fc3 = nn.Linear(lstm_hidden_size, self.full_width)
+
+    def forward(self, latent, action, lstm_hiddens):
+        assert latent.dim() == 2 and action.dim() == 2
+        assert (
+            latent.shape[1] == self.latent_size and action.shape[1] == self.action_size
+        )
+
+        out = torch.cat([action, latent], dim=1)
+        out = self.fc1(out)
+        out = torch.relu(out)
+        new_latent = self.fc2(out)
+        lstm_input = new_latent.unsqueeze(0)
+        val_prefix_logits, new_hiddens = self.lstm(lstm_input, lstm_hiddens)
+        val_prefix_logits = val_prefix_logits.squeeze(0)
+        val_prefix_logits = self.fc3(val_prefix_logits)
+        return new_latent, val_prefix_logits, new_hiddens
+
+
 class CartPred(nn.Module):
     def __init__(self, action_size, latent_size, support_width):
         super().__init__()
@@ -81,7 +141,19 @@ class MuZeroCartNet(nn.Module):
         self.support_width = config["support_width"]
 
         self.pred_net = CartPred(self.action_size, self.latent_size, self.support_width)
-        self.dyna_net = CartDyna(self.action_size, self.latent_size, self.support_width)
+
+        if self.config["value_prefix"]:
+            self.lstm_hidden_size = self.config["lstm_hidden_size"]
+            self.dyna_net = CartDynaLSTM(
+                self.action_size,
+                self.latent_size,
+                self.support_width,
+                self.lstm_hidden_size,
+            )
+        else:
+            self.dyna_net = CartDyna(
+                self.action_size, self.latent_size, self.support_width
+            )
         self.repr_net = CartRepr(self.obs_size, self.latent_size)
 
         self.policy_loss = nn.CrossEntropyLoss(reduction="none")
@@ -110,9 +182,13 @@ class MuZeroCartNet(nn.Module):
         policy, value = self.pred_net(latent)
         return policy, value
 
-    def dynamics(self, latent, action):
-        latent, reward = self.dyna_net(latent, action)
-        return latent, reward
+    def dynamics(self, latent, action, hiddens):
+        if self.config["value_prefix"]:
+            latent, val_prefix, new_hiddens = self.dyna_net(latent, action, hiddens)
+            return latent, val_prefix, new_hiddens
+        else:
+            latent, reward = self.dyna_net(latent, action)
+            return latent, reward
 
     def represent(self, observation):
         latent = self.repr_net(observation)
@@ -146,9 +222,23 @@ class MuZeroAtariNet(nn.Module):
         self.latent_depth = self.channel_list[-1]
         self.latent_area = self.x_size_final * self.y_size_final
 
-        self.dyna_net = AtariDynamicsNet(
-            self.latent_depth, self.support_width, self.latent_area, self.action_size
-        )
+        if config["value_prefix"]:
+            self.dyna_net = AtariDynamicsLSTMNet(
+                latent_depth=self.latent_depth,
+                support_width=self.support_width,
+                latent_area=self.latent_area,
+                action_space_size=self.action_size,
+                lstm_hidden_size=self.config["lstm_hidden_size"],
+                val_prefix_size=self.config["val_prefix_size"],
+                reward_channels=self.config["reward_channels"],
+            )
+        else:
+            self.dyna_net = AtariDynamicsNet(
+                self.latent_depth,
+                self.support_width,
+                self.latent_area,
+                self.action_size,
+            )
         self.pred_net = AtariPredictionNet(
             self.latent_depth, self.support_width, self.latent_area, self.action_size
         )
@@ -185,44 +275,17 @@ class MuZeroAtariNet(nn.Module):
         policy, value = self.pred_net(latent)
         return policy, value
 
-    def dynamics(self, latent, action):
-        latent, reward = self.dyna_net(latent, action)
-        return latent, reward
+    def dynamics(self, latent, action, lstm_hiddens=None):
+        if self.config["value_prefix"]:
+            latent, reward, hiddens = self.dyna_net(latent, action, lstm_hiddens)
+            return latent, reward, hiddens
+        else:
+            latent, reward = self.dyna_net(latent, action)
+            return latent, reward
 
     def represent(self, observation):
         latent = self.repr_net(observation)
         return latent
-
-
-def conv3x3(in_channels, out_channels, stride=1):
-    return torch.nn.Conv2d(
-        in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False
-    )
-
-
-class ResBlockSmall(torch.nn.Module):
-    def __init__(self, num_channels, stride=1, dropout=0.2):
-        super().__init__()
-        self.conv1 = conv3x3(num_channels, num_channels, stride)
-        nn.init.kaiming_normal_(self.conv1.weight)
-        self.bn1 = torch.nn.BatchNorm2d(num_channels)
-        self.conv2 = conv3x3(num_channels, num_channels)
-        nn.init.kaiming_normal_(self.conv2.weight)
-        self.bn2 = torch.nn.BatchNorm2d(num_channels)
-        self.dropout1 = nn.Dropout(dropout)
-        self.dropout2 = nn.Dropout(dropout)
-
-    def forward(self, x):
-        out = self.dropout1(x)
-        out = self.conv1(out)
-        out = self.bn1(out)
-        out = F.relu(out)
-        out = self.dropout2(out)
-        out = self.conv2(out)
-        out = self.bn2(out)
-        out += x
-        out = F.relu(out)
-        return out
 
 
 # class ResBlock(nn.Module):
@@ -364,6 +427,145 @@ class AtariRepresentationNet(nn.Module):
         return out
 
 
+class AtariDynamicsNet(nn.Module):
+    def __init__(
+        self,
+        latent_depth,
+        support_width,
+        latent_area,
+        action_space_size,
+        reward_head_width=50,
+    ):
+        super().__init__()
+        self.latent_depth = latent_depth
+        self.full_support_width = (support_width * 2) + 1
+        self.latent_area = latent_area
+
+        self.conv1 = nn.Conv2d(
+            latent_depth + action_space_size, latent_depth, kernel_size=3, padding=1
+        )
+        self.res1 = ResBlockSmall(latent_depth)
+
+        self.fc1 = nn.Linear(latent_area * latent_depth, reward_head_width)
+        self.fc2 = nn.Linear(reward_head_width, self.full_support_width)
+
+    def forward(self, latent, actions_one_hot):
+        # Receives 2D actions of batch_size x action_space_size
+        action_images = torch.ones(
+            latent.shape[0], latent.shape[2], latent.shape[3], device=latent.device
+        )
+
+        action_images_spread = torch.einsum(
+            "bhw,ba->bahw", action_images, actions_one_hot
+        )  # Spread the one-hot action over the first dim to make a channel for each possible action
+
+        res_input = torch.cat((latent, action_images_spread), dim=1)
+
+        batch_size = latent.shape[0]
+        out = self.conv1(res_input)
+        new_latent = self.res1(out)
+
+        out = new_latent.reshape(batch_size, -1)
+        reward_logits = self.fc2(torch.relu(self.fc1(out)))
+
+        return new_latent, reward_logits
+
+
+class AtariDynamicsLSTMNet(nn.Module):
+    def __init__(
+        self,
+        latent_depth,
+        support_width,
+        latent_area,
+        action_space_size,
+        lstm_hidden_size,
+        val_prefix_size,
+        reward_channels,
+    ):
+        super().__init__()
+        self.latent_depth = latent_depth
+        self.full_support_width = (support_width * 2) + 1
+        self.latent_area = latent_area
+
+        self.conv1 = nn.Conv2d(
+            latent_depth + action_space_size, latent_depth, kernel_size=3, padding=1
+        )
+        self.res1 = ResBlockSmall(latent_depth)
+
+        self.conv1x1 = nn.Conv2d(latent_depth, reward_channels, 1)
+
+        self.bn1 = nn.BatchNorm2d(reward_channels, momentum=0.9)
+        self.bn2 = nn.BatchNorm1d(lstm_hidden_size, momentum=0.9)
+        self.bn3 = nn.BatchNorm1d(val_prefix_size, momentum=0.9)
+
+        self.lstm_hidden_size = lstm_hidden_size
+        # lstm input size = latent.x * latent.y * reward_channels
+        self.lstm_input_size = (96 // 16) * (96 // 16) * reward_channels
+        self.lstm = nn.LSTM(
+            input_size=self.lstm_input_size, hidden_size=self.lstm_hidden_size
+        )
+
+        self.fc1 = nn.Linear(lstm_hidden_size, val_prefix_size)
+        self.fc2 = nn.Linear(val_prefix_size, self.full_support_width)
+
+    def forward(self, latent, actions_one_hot, reward_hiddens):
+        # Receives 2D actions of batch_size x action_space_size
+        action_images = torch.ones(
+            latent.shape[0], latent.shape[2], latent.shape[3], device=latent.device
+        )
+
+        action_images_spread = torch.einsum(
+            "bhw,ba->bahw", action_images, actions_one_hot
+        )  # Spread the one-hot action over the first dim to make a channel for each possible action
+
+        res_input = torch.cat((latent, action_images_spread), dim=1)
+
+        batch_size = latent.shape[0]
+        out = self.conv1(res_input)
+        new_latent = self.res1(out)
+
+        value_prefix = self.conv1x1(new_latent)
+        value_prefix = torch.relu(self.bn1(value_prefix))
+        value_prefix = value_prefix.view(value_prefix.shape[0], -1)
+        value_prefix = value_prefix.unsqueeze(0)
+        value_prefix, value_hiddens = self.lstm(value_prefix, reward_hiddens)
+        value_prefix = value_prefix.squeeze(0)
+        value_prefix = torch.relu(self.bn2(value_prefix))
+        value_prefix = torch.relu(self.bn3(self.fc1(value_prefix)))
+        value_prefix_support = self.fc2(value_prefix)
+
+        return new_latent, value_prefix_support, value_hiddens
+
+
+class AtariPredictionNet(nn.Module):
+    def __init__(
+        self,
+        latent_depth,
+        support_width,
+        latent_area,
+        action_size,
+        prediction_head_width=50,
+    ):
+        super().__init__()
+
+        self.latent_depth = latent_depth
+        self.full_support_width = (support_width * 2) + 1
+        self.latent_area = latent_area
+
+        self.fc1 = nn.Linear(latent_area * latent_depth, prediction_head_width)
+        self.fc_policy = nn.Linear(prediction_head_width, action_size)
+        self.fc_value = nn.Linear(prediction_head_width, self.full_support_width)
+
+    def forward(self, x):
+        batch_size = x.shape[0]
+        out = x.reshape(batch_size, -1)
+
+        out = torch.relu(self.fc1(out))
+        policy_logits = self.fc_policy(out)
+        value_logits = self.fc_value(out)
+        return policy_logits, value_logits
+
+
 class TestNet(nn.Module):
     def __init__(self, action_size, obs_size, config):
         super().__init__()
@@ -457,79 +659,6 @@ class TestPredictionNet(nn.Module):
     def forward(self, x):
         policy_logits = self.fc_policy(x)
         value_logits = self.fc_value(x)
-        return policy_logits, value_logits
-
-
-class AtariDynamicsNet(nn.Module):
-    def __init__(
-        self,
-        latent_depth,
-        support_width,
-        latent_area,
-        action_space_size,
-        reward_head_width=50,
-    ):
-        super().__init__()
-        self.latent_depth = latent_depth
-        self.full_support_width = (support_width * 2) + 1
-        self.latent_area = latent_area
-
-        self.conv1 = nn.Conv2d(
-            latent_depth + action_space_size, latent_depth, kernel_size=3, padding=1
-        )
-        self.res1 = ResBlockSmall(latent_depth)
-
-        self.fc1 = nn.Linear(latent_area * latent_depth, reward_head_width)
-        self.fc2 = nn.Linear(reward_head_width, self.full_support_width)
-
-    def forward(self, latent, actions_one_hot):
-        # Receives 2D actions of batch_size x action_space_size
-        action_images = torch.ones(
-            latent.shape[0], latent.shape[2], latent.shape[3], device=latent.device
-        )
-
-        action_images_spread = torch.einsum(
-            "bhw,ba->bahw", action_images, actions_one_hot
-        )  # Spread the one-hot action over the first dim to make a channel for each possible action
-
-        res_input = torch.cat((latent, action_images_spread), dim=1)
-
-        batch_size = latent.shape[0]
-        out = self.conv1(res_input)
-        new_latent = self.res1(out)
-
-        out = new_latent.reshape(batch_size, -1)
-        reward_logits = self.fc2(torch.relu(self.fc1(out)))
-
-        return new_latent, reward_logits
-
-
-class AtariPredictionNet(nn.Module):
-    def __init__(
-        self,
-        latent_depth,
-        support_width,
-        latent_area,
-        action_size,
-        prediction_head_width=50,
-    ):
-        super().__init__()
-
-        self.latent_depth = latent_depth
-        self.full_support_width = (support_width * 2) + 1
-        self.latent_area = latent_area
-
-        self.fc1 = nn.Linear(latent_area * latent_depth, prediction_head_width)
-        self.fc_policy = nn.Linear(prediction_head_width, action_size)
-        self.fc_value = nn.Linear(prediction_head_width, self.full_support_width)
-
-    def forward(self, x):
-        batch_size = x.shape[0]
-        out = x.reshape(batch_size, -1)
-
-        out = torch.relu(self.fc1(out))
-        policy_logits = self.fc_policy(out)
-        value_logits = self.fc_value(out)
         return policy_logits, value_logits
 
 

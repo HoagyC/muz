@@ -37,6 +37,7 @@ class Trainer:
         is trained - is it akin to training through a recurrent neural network with the prediction function
         as a head
         """
+        torch.autograd.set_detect_anomaly(True)
         self.writer = SummaryWriter(log_dir=log_dir)
         next_batch = None
         total_batches = ray.get(memory.get_data.remote())["batches"]
@@ -114,6 +115,7 @@ class Trainer:
 
             latents = mu_net.represent(init_images)
             print_timing("represent")
+            output_hiddens = None
             for i in range(config["rollout_depth"]):
                 print_timing("rollout start")
                 screen_t = torch.tensor(depths) > i
@@ -138,10 +140,14 @@ class Trainer:
                 ).to(device=device)
 
                 pred_policy_logits, pred_value_logits = mu_net.predict(latents)
-
-                new_latents, pred_reward_logits = mu_net.dynamics(
-                    latents, one_hot_actions
-                )
+                if config["value_prefix"]:
+                    new_latents, pred_reward_logits, output_hiddens = mu_net.dynamics(
+                        latents, one_hot_actions, output_hiddens
+                    )
+                else:
+                    new_latents, pred_reward_logits = mu_net.dynamics(
+                        latents, one_hot_actions
+                    )
                 print_timing("forward pass")
 
                 # We scale down the gradient, I believe so that the gradient at the base of the unrolled

@@ -40,7 +40,10 @@ class Reanalyser:
 
             if len(p) > 0:
                 ndxs = ray.get(memory.get_buffer_ndxs.remote())
-                ndx = np.random.choice(ndxs, p=p)
+                try:
+                    ndx = np.random.choice(ndxs, p=p)
+                except ValueError:
+                    print(p, ndxs)
                 game_rec = ray.get(memory.get_buffer_ndx.remote(ndx))
                 minmax = ray.get(memory.get_minmax.remote())
 

@@ -1,46 +1,8 @@
+# Basic params
 env_name: "CartPole-v1"
 obs_type: "cartpole"
 seed: 0
 obs_size: [4]
-
-
-# Training params
-learning_rate: 0.02
-learning_rate_decay: 0.9
-weight_decay: 0.0001
-root_dirichlet_alpha: 0.25
-explore_frac: 0.25
-val_weight: 0.25
-discount: 0.997
-n_batches: 100
-batch_size: 30
-rollout_depth: 5
-reward_depth: 30
-buffer_size: 50
-consistency_loss: True
-consistency_weight: 0.5
-reanalyse: True
-reanalyse_n: 1
-grad_clip: 1 # 0 indicates no clipping
-prior_weight: 1
-momentum: 0.9
-
-temp1: 1000
-temp2: 2000
-
-# EfficientZero
-tau: 0.3
-reward_steps: 1000
-
-# Replay params
-priority_replay: False
-priority_alpha: 1
-priority_beta: 1
-
-# Model params
-latent_size: 20
-support_width: 25
-n_simulations: 40
 
 # Setup params  
 log_dir: "runs"
@@ -50,5 +12,57 @@ render: True
 print_simple: True
 max_games: 1000
 temp_time: 20
+max_frames: 1000 # Maximum frames for a single game before it is cut short
 
-max_frames: 1000  
+# Model params
+latent_size: 20
+support_width: 25
+n_simulations: 40
+
+# Training params
+learning_rate: 0.02
+learning_rate_decay: 0.9
+weight_decay: 0.0001
+grad_clip: 1 # 0 interpreted as no clipping
+val_weight: 0.25
+batch_size: 30
+
+# Search params
+root_dirichlet_alpha: 0.25
+explore_frac: 0.25
+discount: 0.997
+n_batches: 100
+rollout_depth: 5
+reward_depth: 30
+buffer_size: 50
+
+# Priority replay params
+priority_replay: True
+priority_alpha: 1
+priority_beta: 1
+
+# Temperature schedule
+temp1: 1000 # Steps after which temperature is dropped to 0.5
+temp2: 2000 # Steps after which temperature is dropped to 0.25
+temp3: 3000 # Steps after which temperature is dropped to 0
+
+# Reanalyse
+reanalyse: True
+reanalyse_n: 1
+prior_weight: 1
+momentum: 0.9
+
+
+## EfficientZero Additions
+# Value prefix
+value_prefix: True
+lstm_hidden_size: 16
+
+# Off policy correction
+tau: 0.3
+reward_steps: 1000
+total_training_steps: 100_000
+
+# Consistency loss
+consistency_loss: True
+consistency_weight: 0.5
