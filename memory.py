@@ -366,7 +366,10 @@ class Memory:
                 "total batches": self.total_batches,
             }
         )
-        if self.total_games >= self.config["max_games"]:
+        if (
+            self.total_games >= self.config["max_games"]
+            or self.total_frames >= self.config["max_total_frames"]
+        ):
             self.finished = True
 
     def get_scores(self):
