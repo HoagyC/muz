@@ -47,6 +47,7 @@ class Trainer:
         while ray.get(memory.get_buffer_len.remote()) == 0:
             time.sleep(1)
         ms = time.time()
+        metrics_dict = {}
 
         while not ray.get(memory.is_finished.remote()):
             print_timing("start")

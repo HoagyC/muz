@@ -16,7 +16,7 @@ def run_config(config, path, n_runs=10):
     for i in range(n_runs):
         stats = main.run(copy.copy(init_config))
 
-        with open(os.path.join(path, f"run{i}.txt"), "w") as f:
+        with open(os.path.join(path, f"run{i}.txt"), "wb") as f:
             pickle.dump(stats, f)
 
 
@@ -34,12 +34,13 @@ binary_switches = [
 for run_ndx in range(2 ** len(binary_switches)):
     config = copy.copy(init_config)
     ndx_bin = bin(run_ndx)[2:].zfill(len(binary_switches))
-    bool_switches = list(ndx_bin)
+    bool_switches = [bool(int(i)) for i in list(ndx_bin)]
     config_update_dict = dict(zip(binary_switches, bool_switches))
+    print(config_update_dict)
     config.update(config_update_dict)
 
     run_name = "_".join(
         [binary_switches[i] for i in range(len(binary_switches)) if bool_switches[i]]
     )
     path = os.path.join("comps", run_name)
-    run_config(config=config, path=path)
+    run_config(config=config, path=path, n_runs=10)

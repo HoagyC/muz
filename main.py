@@ -76,7 +76,7 @@ def run(config, train_only=False):
     workers = []
 
     memory_gpus = 0.1 if torch.cuda.is_available() else 0
-    memory = Memory.options(num_cpus=0.01, num_gpus=memory_gpus).remote(config, log_dir)
+    memory = Memory.options(num_cpus=0.2, num_gpus=memory_gpus).remote(config, log_dir)
     # open muz implementation uses a GameHistory class
     # with observation_history, action_history, reward_history
     # to_play which is who is to play in case it's a multiplayer, turn-based game
