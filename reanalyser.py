@@ -17,7 +17,7 @@ class Reanalyser:
         self.log_dir = log_dir
 
     def reanalyse(self, mu_net, memory):
-        while True:
+        while not ray.get(memory.is_finished.remote()):
             if "latest_model_dict.pt" in os.listdir(self.log_dir):
                 mu_net = ray.get(
                     memory.load_model.remote(self.log_dir, mu_net, device=self.device)

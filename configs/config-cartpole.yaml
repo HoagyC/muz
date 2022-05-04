@@ -7,11 +7,11 @@ obs_size: [4]
 # Setup params  
 log_dir: "runs"
 log_name: "None"
+load_buffer: False
 debug: False
-render: True
+render: False
 print_simple: True
-max_games: 1000
-temp_time: 20
+max_games: 200 # Total number of games before training is ended
 max_frames: 1000 # Maximum frames for a single game before it is cut short
 
 # Model params
@@ -52,13 +52,13 @@ reanalyse_n: 1
 prior_weight: 1
 momentum: 0.9
 
-
 ## EfficientZero Additions
 # Value prefix
 value_prefix: True
 lstm_hidden_size: 16
 
 # Off policy correction
+off_policy_correction: True
 tau: 0.3
 reward_steps: 1000
 total_training_steps: 100_000

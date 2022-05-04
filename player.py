@@ -28,7 +28,7 @@ class Player:
         minmax = ray.get(memory.get_minmax.remote())
         start_time = time.time()
 
-        while True:
+        while not ray.get(memory.is_finished.remote()):
             data = ray.get(memory.get_data.remote())
             self.total_games = data["games"]
             self.total_frames = data["frames"]
@@ -110,7 +110,7 @@ class Player:
 
             game_record.add_priorities(n_steps=config["reward_depth"])
 
-            memory.save_game.remote(game_record, frames)
+            memory.save_game.remote(game_record, frames, score)
             print(
                 f"Game: {self.total_games + 1:4}. Total frames: {self.total_frames + frames:6}. "
                 + f"Time: {str(datetime.timedelta(seconds=int(time.time() - start_time)))}. Score: {score:6}. "

@@ -48,7 +48,7 @@ class Trainer:
             time.sleep(1)
         ms = time.time()
 
-        while True:
+        while not ray.get(memory.is_finished.remote()):
             print_timing("start")
             st = time.time()
 

@@ -1,4 +1,6 @@
+import copy
 import os
+import pickle
 import sys
 import yaml
 
@@ -9,21 +11,35 @@ def run_config(config, path, n_runs=10):
     os.makedirs(path, exist_ok=True)
 
     with open(os.path.join(path, "config.yaml"), "w") as f:
-        f.write(yaml.dump(init_config))
+        f.write(yaml.dump(config))
 
     for i in range(n_runs):
-        scores = main.run(init_config)
+        stats = main.run(copy.copy(init_config))
 
         with open(os.path.join(path, f"run{i}.txt"), "w") as f:
-            f.write(" ".join([str(x) for x in scores]))
+            pickle.dump(stats, f)
 
 
-init_config = yaml.safe_load(open("config-" + sys.argv[1] + ".yaml", "r"))
+config_path = os.path.join("configs", "config-" + sys.argv[1] + ".yaml")
+init_config = yaml.safe_load(open(config_path, "r"))
 
-config = init_config
-config["priority_replay"] = False
-run_config(config, os.path.join("comps", "no_replay"))
+binary_switches = [
+    "priority_replay",
+    "reanalyse",
+    "off_policy_correction",
+    "consistency_loss",
+    "value_prefix",
+]
 
-config = init_config
-config["priority_replay"] = True
-run_config(config, os.path.join("comps", "with_replay"))
+for run_ndx in range(2 ** len(binary_switches)):
+    config = copy.copy(init_config)
+    ndx_bin = bin(run_ndx)[2:].zfill(len(binary_switches))
+    bool_switches = list(ndx_bin)
+    config_update_dict = dict(zip(binary_switches, bool_switches))
+    config.update(config_update_dict)
+
+    run_name = "_".join(
+        [binary_switches[i] for i in range(len(binary_switches)) if bool_switches[i]]
+    )
+    path = os.path.join("comps", run_name)
+    run_config(config=config, path=path)

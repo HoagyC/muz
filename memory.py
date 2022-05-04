@@ -211,6 +211,7 @@ class GameRecord:
 class Memory:
     def __init__(self, config, log_dir):
         self.config = config
+        self.session_start_time = time.time()
         self.log_dir = log_dir
         self.size = config["buffer_size"]  # How many game records to store
         self.total_vals = 0  # How many total steps are stored
@@ -232,7 +233,11 @@ class Memory:
         self.rollout_depth = config["rollout_depth"]
         self.priorities = []
         self.minmax = MinMax()
-        if os.path.exists(os.path.join("buffers", config["env_name"])):
+        self.finished = False
+        self.game_stats = []
+        if config["load_buffer"] and os.path.exists(
+            os.path.join("buffers", config["env_name"])
+        ):
             self.load_buffer()
         else:
             self.buffer = []
@@ -336,7 +341,10 @@ class Memory:
         with open(os.path.join(self.log_dir, "data.yaml"), "w+") as f:
             yaml.dump(stat_dict, f)
 
-    def save_game(self, game, n_frames):
+    def is_finished(self):
+        return self.finished
+
+    def save_game(self, game, n_frames, score):
         # If reached the max size, remove the oldest GameRecord, and update stats accordingly
         while len(self.buffer) >= self.size:
             self.buffer.pop(0)
@@ -349,13 +357,33 @@ class Memory:
         self.total_frames += n_frames
         self.save_buffer()
         self.save_core_stats
+        self.game_stats.append(
+            {
+                "total games": self.total_games,
+                "score": score,
+                "total frames": self.total_frames,
+                "elapsed time": self.get_elapsed_time(),
+                "total batches": self.total_batches,
+            }
+        )
+        if self.total_games >= self.config["max_games"]:
+            self.finished = True
+
+    def get_scores(self):
+        return self.game_stats
+
+    def get_elapsed_time(self):
+        return time.time() - self.session_start_time
 
     def get_reward_depth(self, val, tau=0.3, total_steps=100_000, max_depth=5):
-        # Varying reward depth depending on the length of time since the trajectory was generated
-        # Follows the formula in A.4 of EfficientZero paper
-        steps_ago = self.total_vals - val
-        depth = max_depth - np.floor((steps_ago / (tau * total_steps)))
-        depth = int(np.clip(depth, 1, max_depth))
+        if self.config["off_policy_correction"]:
+            # Varying reward depth depending on the length of time since the trajectory was generated
+            # Follows the formula in A.4 of EfficientZero paper
+            steps_ago = self.total_vals - val
+            depth = max_depth - np.floor((steps_ago / (tau * total_steps)))
+            depth = int(np.clip(depth, 1, max_depth))
+        else:
+            depth = max_depth
         return depth
 
     def get_batch(self, batch_size=40):

@@ -19,7 +19,7 @@ from reanalyser import Reanalyser
 from testgame import TestEnv, TestEnvD
 
 
-def run(config):
+def run(config, train_only=False):
     if config["env_name"] == "testgame":
         env = TestEnv()
     elif config["env_name"] == "testgamed":
@@ -73,7 +73,7 @@ def run(config):
 
     tb_writer = SummaryWriter(log_dir=log_dir)
 
-    ray.init()
+    workers = []
 
     memory_gpus = 0.1 if torch.cuda.is_available() else 0
     memory = Memory.options(num_cpus=0.01, num_gpus=memory_gpus).remote(config, log_dir)
@@ -97,54 +97,58 @@ def run(config):
     train_gpus = 0.9 if torch.cuda.is_available() else 0
     trainer = Trainer.options(num_cpus=train_cpus, num_gpus=train_gpus).remote()
 
-    if sys.argv[2] != "train":
-        player.play.remote(
-            config=config,
-            mu_net=muzero_network,
-            log_dir=log_dir,
-            device=torch.device("cpu"),
-            memory=memory,
-            env=env,
+    if not train_only:
+        workers.append(
+            player.play.remote(
+                config=config,
+                mu_net=muzero_network,
+                log_dir=log_dir,
+                device=torch.device("cpu"),
+                memory=memory,
+                env=env,
+            )
         )
 
-    trainer.train.remote(
-        mu_net=muzero_network,
-        memory=memory,
-        config=config,
-        device=device,
-        log_dir=log_dir,
+    workers.append(
+        trainer.train.remote(
+            mu_net=muzero_network,
+            memory=memory,
+            config=config,
+            device=device,
+            log_dir=log_dir,
+        )
     )
 
     if config["reanalyse"]:
         analyser = Reanalyser.options(num_cpus=0.1).remote(
             config=config, log_dir=log_dir
         )
-        analyser.reanalyse.remote(mu_net=muzero_network, memory=memory)
+        workers.append(analyser.reanalyse.remote(mu_net=muzero_network, memory=memory))
 
-    while True:
-        time.sleep(10)
+    ray.wait(workers)
 
-        # metrics_dict = train(memory, config["n_batches"], device=device)
-        # time_per_batch = (time.time() - train_start_time) / config["n_batches"]
+    # metrics_dict = train(memory, config["n_batches"], device=device)
+    # time_per_batch = (time.time() - train_start_time) / config["n_batches"]
 
-        # for key, val in metrics_dict.items():
-        #     tb_writer.add_scalar(key, val, total_games)
+    # for key, val in metrics_dict.items():
+    #     tb_writer.add_scalar(key, val, total_games)
 
-        # tb_writer.add_scalar("Score", score, total_games)
+    # tb_writer.add_scalar("Score", score, total_games)
 
-        # scores.append(score)
-        # total_games += 1
-        # total_frames += frames
+    # scores.append(score)
+    # total_games += 1
+    # total_frames += frames
 
-        # print(
-        #     f"Game: {total_games:4}. Total frames: {total_frames:6}. "
-        #     + f"Time: {str(datetime.timedelta(seconds=int(time.time() - start_time)))}. Score: {score:6}. "
-        #     + f"Loss: {metrics_dict['Loss/total'].item():7.2f}. "
-        #     + f"Value mean, std: {np.mean(np.array(vals)):6.2f}, {np.std(np.array(vals)):5.2f}. "
-        #     + f"s/move: {time_per_move:5.3f}. s/batch: {time_per_batch:6.3f}."
-        # )
+    # print(
+    #     f"Game: {total_games:4}. Total frames: {total_frames:6}. "
+    #     + f"Time: {str(datetime.timedelta(seconds=int(time.time() - start_time)))}. Score: {score:6}. "
+    #     + f"Loss: {metrics_dict['Loss/total'].item():7.2f}. "
+    #     + f"Value mean, std: {np.mean(np.array(vals)):6.2f}, {np.std(np.array(vals)):5.2f}. "
+    #     + f"s/move: {time_per_move:5.3f}. s/batch: {time_per_batch:6.3f}."
+    # )
 
     env.close()
+    scores = ray.get(memory.get_scores.remote())
     return scores
 
 
