@@ -7,13 +7,13 @@ import yaml
 import main
 
 
-def run_config(config, path, n_runs=10):
+def run_config(config, path, n_runs=10, start_run=0):
     os.makedirs(path, exist_ok=True)
 
     with open(os.path.join(path, "config.yaml"), "w") as f:
         f.write(yaml.dump(config))
 
-    for i in range(n_runs):
+    for i in range(start_run, n_runs):
         stats = main.run(copy.copy(init_config))
 
         with open(os.path.join(path, f"run_{i}_stats.pkl"), "wb") as f:
@@ -31,9 +31,11 @@ binary_switches = [
     "value_prefix",
 ]
 
-for run_ndx in range(2 ** len(binary_switches)):
+start_config, start_run = 1, 2
+
+for config_ndx in range(start_config, 2 ** len(binary_switches)):
     config = copy.copy(init_config)
-    ndx_bin = bin(run_ndx)[2:].zfill(len(binary_switches))
+    ndx_bin = bin(config_ndx)[2:].zfill(len(binary_switches))
     bool_switches = [bool(int(i)) for i in list(ndx_bin)]
     config_update_dict = dict(zip(binary_switches, bool_switches))
     print(config_update_dict)
@@ -45,4 +47,5 @@ for run_ndx in range(2 ** len(binary_switches)):
     run_name = "_".join(sub_names)
     print(run_name)
     path = os.path.join("comps", run_name)
-    run_config(config=config, path=path, n_runs=10)
+    begin_run = start_run if config_ndx == start_config else 0
+    run_config(config=config, path=path, n_runs=10, start_run=begin_run)
