@@ -17,7 +17,7 @@ from models import scalar_to_support, support_to_scalar
 @ray.remote
 class Trainer:
     def __init__(self):
-        self.last_time = datetime.datetime()
+        self.last_time = datetime.datetime.now()
 
     def train(
         self,
@@ -37,6 +37,7 @@ class Trainer:
         is trained - is it akin to training through a recurrent neural network with the prediction function
         as a head
         """
+        self.config = config
         torch.autograd.set_detect_anomaly(True)
         self.writer = SummaryWriter(log_dir=log_dir)
         next_batch = None
@@ -281,9 +282,10 @@ class Trainer:
         return metrics_dict
 
     def print_timing(self, tag):
-        now = datetime.datetime.now()
-        print(f"{tag:20} {now - self.last_time}")
-        self.last_time = now
+        if self.config["train_speed_profiling"]:
+            now = datetime.datetime.now()
+            print(f"{tag:20} {now - self.last_time}")
+            self.last_time = now
 
 
 def test_whole_game(mu_net, memory):
