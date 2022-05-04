@@ -17,7 +17,7 @@ from models import scalar_to_support, support_to_scalar
 @ray.remote
 class Trainer:
     def __init__(self):
-        pass
+        self.last_time = datetime.datetime()
 
     def train(
         self,
@@ -50,7 +50,7 @@ class Trainer:
         metrics_dict = {}
 
         while not ray.get(memory.is_finished.remote()):
-            print_timing("start")
+            self.print_timing("start")
             st = time.time()
 
             (
@@ -62,22 +62,22 @@ class Trainer:
             ) = (0, 0, 0, 0, 0)
             if not next_batch:
                 next_batch = memory.get_batch.remote(batch_size=config["batch_size"])
-            print_timing("next batch command")
+            self.print_timing("next batch command")
 
             val_diff = 0
 
-            print_timing("load model")
+            self.print_timing("load model")
             mu_net.train()
-            print_timing("to train")
+            self.print_timing("to train")
             mu_net = mu_net.to(device)
-            print_timing("to device")
+            self.print_timing("to device")
             (
                 batch_policy_loss,
                 batch_reward_loss,
                 batch_value_loss,
                 batch_consistency_loss,
             ) = (0, 0, 0, 0)
-            print_timing("init")
+            self.print_timing("init")
             (
                 images,
                 actions,
@@ -88,7 +88,7 @@ class Trainer:
                 depths,
             ) = ray.get(next_batch)
             next_batch = memory.get_batch.remote(batch_size=config["batch_size"])
-            print_timing("get batch")
+            self.print_timing("get batch")
 
             images = images.to(device=device)
             actions = actions.to(device=device)
@@ -96,7 +96,7 @@ class Trainer:
             target_values = target_values.to(device=device)
             target_policies = target_policies.to(device=device)
             weights = weights.to(device=device)
-            print_timing("uploading weights")
+            self.print_timing("uploading weights")
 
             assert (
                 len(actions)
@@ -106,23 +106,23 @@ class Trainer:
                 == len(images)
             )
             assert config["rollout_depth"] == actions.shape[1]
-            print_timing("asserting")
+            self.print_timing("asserting")
 
             # This is how far we will deny the use of the representation function,
             # requiring the dynamics function to learn to represent the s, a -> s function
             # All batch tensors are index first by batch x rollout
             init_images = images[:, 0]
-            print_timing("images0")
+            self.print_timing("images0")
 
             latents = mu_net.represent(init_images)
-            print_timing("represent")
+            self.print_timing("represent")
             output_hiddens = None
             for i in range(config["rollout_depth"]):
-                print_timing("rollout start")
+                self.print_timing("rollout start")
                 screen_t = torch.tensor(depths) > i
                 if torch.sum(screen_t) < 1:
                     continue
-                print_timing("for init")
+                self.print_timing("for init")
 
                 # We must do tthis sequentially, as the input to the dynamics function requires the output
                 # from the previous dynamics function
@@ -130,11 +130,11 @@ class Trainer:
                 target_value_step_i = target_values[:, i]
                 target_reward_step_i = target_rewards[:, i]
                 target_policy_step_i = target_policies[:, i]
-                print_timing("make target")
+                self.print_timing("make target")
 
                 if config["consistency_loss"]:
                     target_latents = mu_net.represent(images[:, i]).detach()
-                print_timing("repreSENT")
+                self.print_timing("repreSENT")
                 one_hot_actions = nn.functional.one_hot(
                     actions[:, i],
                     num_classes=mu_net.action_size,
@@ -149,7 +149,7 @@ class Trainer:
                     new_latents, pred_reward_logits = mu_net.dynamics(
                         latents, one_hot_actions
                     )
-                print_timing("forward pass")
+                self.print_timing("forward pass")
 
                 # We scale down the gradient, I believe so that the gradient at the base of the unrolled
                 # network converges to a maximum rather than increasing linearly with depth
@@ -163,7 +163,7 @@ class Trainer:
                 #     target_value_stepi, half_width=config["support_width"]
                 # )
 
-                print_timing("discrete to scalar")
+                self.print_timing("discrete to scalar")
 
                 # Cutting off cases where there's not enough data for a full rollout
 
@@ -220,7 +220,7 @@ class Trainer:
                 #     ),
                 #     target_value_sup_i,
                 # )
-                print_timing("done losses")
+                self.print_timing("done losses")
             # Aggregate the losses to a single measure
             batch_loss = (
                 batch_policy_loss
@@ -229,7 +229,7 @@ class Trainer:
                 + (batch_consistency_loss * config["consistency_weight"])
             )
             batch_loss = batch_loss.mean()
-            print_timing("batch loss")
+            self.print_timing("batch loss")
 
             if config["debug"]:
                 print(
@@ -242,14 +242,14 @@ class Trainer:
             if config["grad_clip"] != 0:
                 torch.nn.utils.clip_grad_norm_(mu_net.parameters(), config["grad_clip"])
             mu_net.optimizer.step()
-            print_timing("optimizer")
+            self.print_timing("optimizer")
 
             total_loss += batch_loss
             total_value_loss += batch_value_loss
             total_policy_loss += batch_policy_loss
             total_reward_loss += batch_reward_loss
             total_consistency_loss += batch_consistency_loss
-            print_timing("loss")
+            self.print_timing("loss")
 
             metrics_dict = {
                 "Loss/total": total_loss,
@@ -261,7 +261,7 @@ class Trainer:
                 ),
             }
             mu_net = mu_net.to(device=torch.device("cpu"))
-            print_timing("to_cpu")
+            self.print_timing("to_cpu")
 
             memory.done_batch.remote()
             if total_batches % 50 == 0:
@@ -276,9 +276,14 @@ class Trainer:
                 print(
                     f"Completed {total_batches} total batches of size {config['batch_size']}, took {(time.time() - st)}"
                 )
-            print_timing("saving/end")
+            self.print_timing("saving/end")
 
         return metrics_dict
+
+    def print_timing(self, tag):
+        now = datetime.datetime.now()
+        print(f"{tag:20} {now - self.last_time}")
+        self.last_time = now
 
 
 def test_whole_game(mu_net, memory):
@@ -339,10 +344,3 @@ def get_test_numbers(mu_net, i, discrete, memory):
             dim=1,
         )
     )
-
-
-def print_timing(tag):
-    global last_time
-    now = datetime.datetime.now()
-    # print(f"{tag:20} {now - last_time}")
-    last_time = now
