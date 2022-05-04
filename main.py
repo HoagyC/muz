@@ -66,7 +66,7 @@ def run(config, train_only=False):
     log_dir = os.path.join(config["log_dir"], config["log_name"])
 
     if not os.path.exists(log_dir):
-        os.makedirs(log_dir, exists_ok=True)
+        os.makedirs(log_dir, exist_ok=True)
     if "data.yaml" not in os.listdir(log_dir):
         init_dict = {"games": 0, "steps": 0, "batches": 0}
         yaml.dump(init_dict, open(os.path.join(log_dir, "data.yaml"), "w+"))
