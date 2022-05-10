@@ -56,7 +56,7 @@ momentum: 0.9
 
 ## EfficientZero Additions
 # Value prefix
-value_prefix: True
+value_prefix: False
 lstm_hidden_size: 16
 
 # Off policy correction

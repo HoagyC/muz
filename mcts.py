@@ -119,6 +119,7 @@ def search(
                         latent, reward = [
                             x[0] for x in mu_net.dynamics(latent.unsqueeze(0), action_t)
                         ]
+                        new_hiddens = None
                     new_policy, new_val = [
                         x[0] for x in mu_net.predict(latent.unsqueeze(0))
                     ]
@@ -127,7 +128,6 @@ def search(
                     reward = support_to_scalar(torch.softmax(reward, 0))
                     new_val = support_to_scalar(torch.softmax(new_val, 0))
                     policy_probs = torch.softmax(new_policy, 0)
-
                     current_node.insert(
                         action_n=action,
                         latent=latent,
@@ -196,7 +196,15 @@ class TreeNode:
         self.lstm_hiddens = lstm_hiddens
 
     def insert(
-        self, action_n, latent, val_pred, pol_pred, reward, minmax, config, lstm_hiddens
+        self,
+        action_n,
+        latent,
+        val_pred,
+        pol_pred,
+        reward,
+        minmax,
+        config,
+        lstm_hiddens=None,
     ):
         # The implementation here differs from the open MuZero (werner duvaud)
         # by only initializing tree nodes when they are chosen, rather than when their parent is chosen

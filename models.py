@@ -182,8 +182,9 @@ class MuZeroCartNet(nn.Module):
         policy, value = self.pred_net(latent)
         return policy, value
 
-    def dynamics(self, latent, action, hiddens):
+    def dynamics(self, latent, action, hiddens=None):
         if self.config["value_prefix"]:
+            assert hiddens
             latent, val_prefix, new_hiddens = self.dyna_net(latent, action, hiddens)
             return latent, val_prefix, new_hiddens
         else:

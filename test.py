@@ -33,7 +33,7 @@ binary_switches = [
     "value_prefix",
 ]
 
-start_config, start_run = 2, 3
+start_config, start_run = 0, 0
 
 for config_ndx in range(start_config, 2 ** len(binary_switches)):
     config = copy.copy(init_config)
