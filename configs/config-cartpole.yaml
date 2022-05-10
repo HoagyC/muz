@@ -12,7 +12,7 @@ debug: False
 train_speed_profiling: False
 render: False
 print_simple: True
-max_games: 200 # Total number of games before training is ended
+max_games: 500 # Total number of games before training is ended
 max_total_frames: 15_000
 max_frames: 1000 # Maximum frames for a single game before it is cut short
 
@@ -36,7 +36,7 @@ discount: 0.997
 n_batches: 100
 rollout_depth: 5
 reward_depth: 30
-buffer_size: 50
+buffer_size: 200
 
 # Priority replay params
 priority_replay: True
