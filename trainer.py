@@ -277,11 +277,13 @@ class Trainer:
                 print(
                     f"Completed {total_batches} total batches of size {config['batch_size']}, took {(time.time() - st)}"
                 )
+            if self.config["train_speed_profiling"]:
+                print(f"WHOLE BATCH: {time.time() - st}")
             self.print_timing("saving/end")
 
         return metrics_dict
 
-    def print_timing(self, tag):
+    def print_timing(self, tag, min_time=0.05):
         if self.config["train_speed_profiling"]:
             now = datetime.datetime.now()
             print(f"{tag:20} {now - self.last_time}")
