@@ -9,7 +9,7 @@ log_dir: "runs"
 log_name: "None"
 load_buffer: False
 debug: False
-train_speed_profiling: False
+train_speed_profiling: True
 render: False
 print_simple: True
 max_games: 500 # Total number of games before training is ended
