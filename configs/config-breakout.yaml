@@ -1,5 +1,5 @@
 # Basic params
-env_name: "BreakoutNoFrameskip-v1"
+env_name: "BreakoutNoFrameskip-v4"
 obs_type: "image"
 seed: 0
 obs_size: [96, 96, 3]
@@ -13,7 +13,7 @@ train_speed_profiling: False
 render: False
 print_simple: True
 max_games: 500 # Total number of games before training is ended
-max_total_frames: 1000
+max_total_frames: 100000
 max_frames: 3000 # Maximum frames for a single game before it is cut short
 n_simulations: 10
 
@@ -21,6 +21,8 @@ n_simulations: 10
 latent_size: 20
 channel_list: [16, 32]
 support_width: 25
+last_n_frames: 4   # image only
+dropout: 0.5      # image only
 
 # Training params
 learning_rate: 0.02
