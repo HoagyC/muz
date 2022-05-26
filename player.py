@@ -43,6 +43,7 @@ class Player:
             frames = 0
             over = False
             frame = env.reset()
+            print("start new game")
 
             if config["obs_type"] == "image":
                 frame = normalize(frame)

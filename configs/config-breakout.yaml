@@ -1,61 +1,73 @@
-env_name: "BreakoutNoFrameskip-v4"
+# Basic params
+env_name: "BreakoutNoFrameskip-v1"
 obs_type: "image"
+seed: 0
 obs_size: [96, 96, 3]
-seed: 0 
 
-# Training params
-learning_rate: 0.2
-learning_rate_decay: 0.9
-weight_decay: 0.0001
-root_dirichlet_alpha: 0.25
-explore_frac: 0.25
-val_weight: 2
-discount: 0.988054
-n_batches: 60
-batch_size: 5
-rollout_depth: 5
-reward_depth: 5
-buffer_size: 20
-consistency_loss: True
-consistency_weight: 0.5
-reanalyse: True
-reanalyse_n: 1
-grad_clip: 1
-last_n_frames: 4  
-frame_skip: 4
-prior_weight: 1
-
-dropout: 0.2
-temp1: 1000
-temp2: 2000
-
-tau: 0.3
-total_training_steps: 100_000
-
-# Replay params
-priority_replay: True
-priority_alpha: 1
-priority_beta: 1
-
-#lstm params
-value_prefix: True
-lstm_hidden_size: 512
-val_prefix_size: 32
-reward_channels: 16
+# Setup params  
+log_dir: "runs"
+log_name: "None"
+load_buffer: False
+debug: False
+train_speed_profiling: False
+render: False
+print_simple: True
+max_games: 500 # Total number of games before training is ended
+max_total_frames: 1000
+max_frames: 3000 # Maximum frames for a single game before it is cut short
+n_simulations: 10
 
 # Model params
 latent_size: 20
 channel_list: [16, 32]
 support_width: 25
-n_simulations: 10
 
-# Setup params  
-log_dir: "runs"
-log_name: "None"
-debug: False
-render: True
-print_simple: True
-max_games: 400
-temp_time: 50
+# Training params
+learning_rate: 0.02
+learning_rate_decay: 0.9
+weight_decay: 0.0001
+grad_clip: 1 # 0 interpreted as no clipping
+val_weight: 0.25
+batch_size: 30
 
-max_frames: 3000
+# Search params
+root_dirichlet_alpha: 0.25
+explore_frac: 0.25
+discount: 0.997
+n_batches: 100
+rollout_depth: 5
+reward_depth: 30
+buffer_size: 200
+
+# Priority replay params
+priority_replay: True
+priority_alpha: 1
+priority_beta: 1
+
+# Temperature schedule
+temp1: 10000 # Steps after which temperature is dropped to 0.5
+temp2: 20000 # Steps after which temperature is dropped to 0.25
+temp3: 100000 # Steps after which temperature is dropped to 0
+
+# Reanalyse
+reanalyse: True
+reanalyse_n: 1
+prior_weight: 1
+momentum: 0.9
+
+## EfficientZero Additions
+# Value prefix
+value_prefix: True
+lstm_hidden_size: 512
+val_prefix_size: 32
+reward_channels: 16
+
+# Off policy correction
+off_policy_correction: True
+tau: 0.3
+reward_steps: 1000
+total_training_steps: 100_000
+
+# Consistency loss
+consistency_loss: True
+consistency_weight: 0.5

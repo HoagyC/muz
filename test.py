@@ -15,7 +15,7 @@ def run_config(config, path, n_runs=10, start_run=0):
         f.write(yaml.dump(config))
 
     for i in range(start_run, n_runs):
-        print(f"Starting run {i} of {n_runs} with config {path}")
+        print(f"Starting run {i + 1} of {n_runs} with config {path}")
         stats = main.run(copy.copy(config))
         print("Results:", stats)
 
@@ -54,4 +54,4 @@ if __name__ == "__main__":
         print(run_name)
         path = os.path.join("testcomp", run_name)
         begin_run = start_run if config_ndx == start_config else 0
-        run_config(config=config, path=path, n_runs=10, start_run=begin_run)
+        run_config(config=config, path=path, n_runs=1, start_run=begin_run)
