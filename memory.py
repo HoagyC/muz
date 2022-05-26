@@ -389,7 +389,7 @@ class Memory:
             depth = max_depth
         return depth
 
-    def get_batch(self, batch_size=40):
+    def get_batch(self, batch_size=40, device):
         batch = []
 
         # Get a random list of points across the length of the buffer to take training examples
@@ -467,12 +467,12 @@ class Memory:
         weights_t = weights_t / max(weights_t)
 
         return (
-            images_t,
-            actions_t,
-            target_values_t,
-            target_rewards_t,
-            target_policies_t,
-            weights_t,
+            images_t.to(device),
+            actions_t.to(device),
+            target_values_t.to(device),
+            target_rewards_t.to(device),
+            target_policies_t.to(device),
+            weights_t.to(device),
             depths_l,
         )
 

@@ -44,6 +44,7 @@ class Trainer:
         total_batches = ray.get(memory.get_data.remote())["batches"]
         if "latest_model_dict.pt" in os.listdir(log_dir):
             mu_net = ray.get(memory.load_model.remote(log_dir, mu_net))
+        mu_net.to(device)
 
         while ray.get(memory.get_buffer_len.remote()) == 0:
             time.sleep(1)
@@ -62,16 +63,13 @@ class Trainer:
                 total_consistency_loss,
             ) = (0, 0, 0, 0, 0)
             if not next_batch:
-                next_batch = memory.get_batch.remote(batch_size=config["batch_size"])
+                next_batch = memory.get_batch.remote(
+                    batch_size=config["batch_size"], device=device
+                )
             self.print_timing("next batch command")
-
             val_diff = 0
-
-            self.print_timing("load model")
             mu_net.train()
             self.print_timing("to train")
-            mu_net = mu_net.to(device)
-            self.print_timing("to device")
             (
                 batch_policy_loss,
                 batch_reward_loss,
@@ -97,7 +95,7 @@ class Trainer:
             target_values = target_values.to(device=device)
             target_policies = target_policies.to(device=device)
             weights = weights.to(device=device)
-            self.print_timing("uploading weights")
+            self.print_timing("changing to device")
 
             assert (
                 len(actions)
@@ -164,8 +162,6 @@ class Trainer:
                 #     target_value_stepi, half_width=config["support_width"]
                 # )
 
-                self.print_timing("discrete to scalar")
-
                 # Cutting off cases where there's not enough data for a full rollout
 
                 # The muzero paper calculates the loss as the squared difference between scalars
@@ -177,6 +173,7 @@ class Trainer:
                 pred_rewards = support_to_scalar(
                     torch.softmax(pred_reward_logits[screen_t], dim=1)
                 )
+                self.print_timing("support to scalar")
                 vvar = torch.var(pred_rewards)
                 # if vvar > 0.01:
                 #     print(vvar, torch.var(target_reward_step_i))
@@ -197,6 +194,7 @@ class Trainer:
                 policy_loss = mu_net.policy_loss(
                     pred_policy_logits[screen_t], target_policy_step_i[screen_t]
                 )
+                print("calc losses")
 
                 if config["consistency_loss"]:
                     consistency_loss = mu_net.consistency_loss(
