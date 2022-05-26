@@ -389,7 +389,7 @@ class Memory:
             depth = max_depth
         return depth
 
-    def get_batch(self, batch_size=40, device):
+    def get_batch(self, batch_size=40, device=torch.device("cpu")):
         batch = []
 
         # Get a random list of points across the length of the buffer to take training examples
