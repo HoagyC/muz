@@ -112,7 +112,7 @@ class Trainer:
             # All batch tensors are index first by batch x rollout
             init_images = images[:, 0]
             self.print_timing("images0")
-
+            print(mu_net.dyna_net.)
             latents = mu_net.represent(init_images)
             self.print_timing("represent")
             output_hiddens = None
@@ -258,12 +258,12 @@ class Trainer:
                     total_consistency_loss * config["consistency_weight"]
                 ),
             }
-            mu_net = mu_net.to(device=torch.device("cpu"))
-            self.print_timing("to_cpu")
 
             memory.done_batch.remote()
             if total_batches % 50 == 0:
+                model.to(device=torch.device('cpu'))
                 memory.save_model.remote(mu_net, log_dir)
+                model.to(device=device)
             total_batches += 1
 
             if self.writer:
