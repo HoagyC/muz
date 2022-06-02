@@ -14,7 +14,7 @@ from torch.utils.tensorboard import SummaryWriter
 from models import scalar_to_support, support_to_scalar
 
 
-@ray.remote
+@ray.remote(max_restarts=-1)
 class Trainer:
     def __init__(self):
         self.last_time = datetime.datetime.now()
@@ -194,7 +194,6 @@ class Trainer:
                 policy_loss = mu_net.policy_loss(
                     pred_policy_logits[screen_t], target_policy_step_i[screen_t]
                 )
-                print("calc losses")
 
                 if config["consistency_loss"]:
                     consistency_loss = mu_net.consistency_loss(

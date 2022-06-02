@@ -370,6 +370,7 @@ class Memory:
             self.total_games >= self.config["max_games"]
             or self.total_frames >= self.config["max_total_frames"]
         ):
+            print("Reached designated end of run, sending shutdown message")
             self.finished = True
 
     def get_scores(self):

@@ -126,7 +126,7 @@ def run(config, train_only=False):
         )
         workers.append(analyser.reanalyse.remote(mu_net=muzero_network, memory=memory))
 
-    ray.wait(workers)
+    ray.get(workers)
 
     # metrics_dict = train(memory, config["n_batches"], device=device)
     # time_per_batch = (time.time() - train_start_time) / config["n_batches"]
