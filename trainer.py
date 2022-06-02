@@ -112,7 +112,6 @@ class Trainer:
             # All batch tensors are index first by batch x rollout
             init_images = images[:, 0]
             self.print_timing("images0")
-            print(mu_net.dyna_net.)
             latents = mu_net.represent(init_images)
             self.print_timing("represent")
             output_hiddens = None
@@ -255,7 +254,7 @@ class Trainer:
                 "Loss/reward": total_reward_loss,
                 "Loss/value": (total_value_loss * config["val_weight"]),
                 "Loss/consistency": (
-                    total_consistency_loss * config["consistency_weight"]
+                    total_consistency_loss * config["consistency_weight"]g
                 ),
             }
 
