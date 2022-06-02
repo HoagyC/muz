@@ -254,15 +254,15 @@ class Trainer:
                 "Loss/reward": total_reward_loss,
                 "Loss/value": (total_value_loss * config["val_weight"]),
                 "Loss/consistency": (
-                    total_consistency_loss * config["consistency_weight"]g
+                    total_consistency_loss * config["consistency_weight"]
                 ),
             }
 
             memory.done_batch.remote()
             if total_batches % 50 == 0:
-                model.to(device=torch.device('cpu'))
+                mu_net.to(device=torch.device("cpu"))
                 memory.save_model.remote(mu_net, log_dir)
-                model.to(device=device)
+                mu_net.to(device=device)
             total_batches += 1
 
             if self.writer:
