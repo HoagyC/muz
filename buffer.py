@@ -1,3 +1,4 @@
+import datetime
 import os
 import pickle
 
@@ -15,6 +16,8 @@ class Buffer:
     def __init__(self, config, memory):
         self.config = config
         self.memory = memory
+
+        self.last_time = datetime.datetime.now()  # Used if profiling speed of batching
 
         self.size = config["buffer_size"]  # How many game records to store
         self.priority_alpha = config["priority_alpha"]
@@ -76,10 +79,10 @@ class Buffer:
         self.priorities = [p / sum_priorities for p in self.priorities]
 
     def get_batch(self, batch_size=40, device=torch.device("cpu")):
+        self.print_timing("start")
         batch = []
 
         # Get a random list of points across the length of the buffer to take training examples
-
         if self.prioritized_replay:
             probabilities = self.priorities
         else:
@@ -90,6 +93,7 @@ class Buffer:
         start_vals = np.random.choice(
             list(range(self.total_vals)), size=batch_size, p=probabilities
         )
+        self.print_timing("get ndxs")
 
         images_l = []
         actions_l = []
@@ -140,6 +144,7 @@ class Buffer:
 
             weights_l.append(weight)
             depths_l.append(depth)
+        self.print_timing("make_lists")
 
         images_t = torch.tensor(np.stack(images_l, axis=0), dtype=torch.float32)
         actions_t = torch.tensor(np.stack(actions_l, axis=0), dtype=torch.int64)
@@ -154,6 +159,7 @@ class Buffer:
         )
         weights_t = torch.tensor(weights_l)
         weights_t = weights_t / max(weights_t)
+        self.print_timing("make_tensors")
 
         return (
             images_t.to(device),
@@ -222,3 +228,9 @@ class Buffer:
         else:
             depth = max_depth
         return depth
+
+    def print_timing(self, tag, min_time=0.05):
+        if self.config["get_batch_profiling"]:
+            now = datetime.datetime.now()
+            print(f"{tag:20} {now - self.last_time}")
+            self.last_time = now

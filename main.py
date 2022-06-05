@@ -177,7 +177,7 @@ if __name__ == "__main__":
         config["channel_list"] = [128, 256]
         config["debug"] = False
         config["log_dir"] = "/content/gdrive/My Drive/muz"
-        config["batch_size"] = 32
+        config["batch_size"] = 128  # 256 causes insufficient memory errors
         if config["obs_type"] == "image":
             config["repr_channels"] = 128
 
