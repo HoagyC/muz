@@ -12,6 +12,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from trainer import Trainer
+from buffer import Buffer
 from player import Player
 from models import MuZeroCartNet, MuZeroAtariNet, TestNet
 from memory import GameRecord, Memory
@@ -75,8 +76,10 @@ def run(config, train_only=False):
 
     workers = []
 
-    memory_gpus = 0.1 if torch.cuda.is_available() else 0
-    memory = Memory.options(num_cpus=0.1, num_gpus=memory_gpus).remote(config, log_dir)
+    buffer_gpus = 0.1 if torch.cuda.is_available() else 0
+    memory = Memory.options(num_cpus=0.1).remote(config, log_dir)
+    buffer = Buffer.options(num_cpus=0.1, num_gpus=buffer_gpus).remote(config, memory)
+
     # open muz implementation uses a GameHistory class
     # with observation_history, action_history, reward_history
     # to_play which is who is to play in case it's a multiplayer, turn-based game
@@ -105,6 +108,7 @@ def run(config, train_only=False):
                 log_dir=log_dir,
                 device=torch.device("cpu"),
                 memory=memory,
+                buffer=buffer,
                 env=env,
             )
         )
@@ -113,6 +117,7 @@ def run(config, train_only=False):
         trainer.train.remote(
             mu_net=muzero_network,
             memory=memory,
+            buffer=buffer,
             config=config,
             device=device,
             log_dir=log_dir,
@@ -124,7 +129,11 @@ def run(config, train_only=False):
         analyser = Reanalyser.options(num_cpus=0.1).remote(
             config=config, log_dir=log_dir
         )
-        workers.append(analyser.reanalyse.remote(mu_net=muzero_network, memory=memory))
+        workers.append(
+            analyser.reanalyse.remote(
+                mu_net=muzero_network, memory=memory, buffer=buffer
+            )
+        )
 
     ray.get(workers)
 

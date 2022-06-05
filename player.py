@@ -24,7 +24,7 @@ class Player:
     def __init__(self, log_dir):
         self.log_dir = log_dir
 
-    def play(self, config, mu_net, device, log_dir, memory, env):
+    def play(self, config, mu_net, device, log_dir, memory, buffer, env):
         minmax = ray.get(memory.get_minmax.remote())
         start_time = time.time()
 
@@ -109,7 +109,9 @@ class Player:
 
             game_record.add_priorities(n_steps=config["reward_depth"])
 
-            memory.save_game.remote(game_record, frames, score)
+            game_data = ray.get(memory.done_game.remote(frames, score))
+            buffer.save_game.remote(game_record, frames, score, game_data)
+
             print(
                 f"Game: {self.total_games + 1:4}. Total frames: {self.total_frames + frames:6}. "
                 + f"Time: {str(datetime.timedelta(seconds=int(time.time() - start_time)))}. Score: {score:6}. "

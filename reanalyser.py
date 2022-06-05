@@ -16,7 +16,7 @@ class Reanalyser:
         self.config = config
         self.log_dir = log_dir
 
-    def reanalyse(self, mu_net, memory):
+    def reanalyse(self, mu_net, memory, buffer):
         while not ray.get(memory.is_finished.remote()):
             if "latest_model_dict.pt" in os.listdir(self.log_dir):
                 mu_net = ray.get(
@@ -25,7 +25,7 @@ class Reanalyser:
 
             # No point reanalysing until there are multiple games in the history
             while True:
-                buffer_len = ray.get(memory.get_buffer_len.remote())
+                buffer_len = ray.get(buffer.get_buffer_len.remote())
                 train_stats = ray.get(memory.get_data.remote())
                 current_game = train_stats["games"]
                 if buffer_len >= 1 and current_game >= 2:
@@ -36,15 +36,15 @@ class Reanalyser:
             mu_net.train()
             mu_net = mu_net.to(self.device)
 
-            p = ray.get(memory.get_reanalyse_probabilities.remote())
+            p = ray.get(buffer.get_reanalyse_probabilities.remote())
 
             if len(p) > 0:
-                ndxs = ray.get(memory.get_buffer_ndxs.remote())
+                ndxs = ray.get(buffer.get_buffer_ndxs.remote())
                 try:
                     ndx = np.random.choice(ndxs, p=p)
                 except ValueError:
                     print(p, ndxs)
-                game_rec = ray.get(memory.get_buffer_ndx.remote(ndx))
+                game_rec = ray.get(buffer.get_buffer_ndx.remote(ndx))
                 minmax = ray.get(memory.get_minmax.remote())
 
                 vals = game_rec.values
@@ -67,8 +67,8 @@ class Reanalyser:
                     )
                     vals[i] = new_root.average_val
 
-                memory.update_vals.remote(ndx=ndx, vals=vals)
-                memory.add_priorities.remote(ndx=ndx, reanalysing=True)
+                buffer.update_vals.remote(ndx=ndx, vals=vals)
+                buffer.add_priorities.remote(ndx=ndx, reanalysing=True)
                 print(f"Reanalysed game {ndx}")
             else:
                 time.sleep(5)

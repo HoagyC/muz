@@ -23,6 +23,7 @@ class Trainer:
         self,
         mu_net,
         memory,
+        buffer,
         config,
         log_dir,
         device=torch.device("cpu"),
@@ -46,7 +47,7 @@ class Trainer:
             mu_net = ray.get(memory.load_model.remote(log_dir, mu_net))
         mu_net.to(device)
 
-        while ray.get(memory.get_buffer_len.remote()) == 0:
+        while ray.get(buffer.get_buffer_len.remote()) == 0:
             time.sleep(1)
         ms = time.time()
         metrics_dict = {}
@@ -63,7 +64,7 @@ class Trainer:
                 total_consistency_loss,
             ) = (0, 0, 0, 0, 0)
             if not next_batch:
-                next_batch = memory.get_batch.remote(
+                next_batch = buffer.get_batch.remote(
                     batch_size=config["batch_size"], device=device
                 )
             self.print_timing("next batch command")
@@ -86,7 +87,7 @@ class Trainer:
                 weights,
                 depths,
             ) = ray.get(next_batch)
-            next_batch = memory.get_batch.remote(batch_size=config["batch_size"])
+            next_batch = buffer.get_batch.remote(batch_size=config["batch_size"])
             self.print_timing("get batch")
 
             images = images.to(device=device)
@@ -286,9 +287,9 @@ class Trainer:
             self.last_time = now
 
 
-def test_whole_game(mu_net, memory):
-    ndx = ray.get(memory.get_buffer_ndxs.remote())[0]
-    game = ray.get(memory.get_buffer_ndx.remote(ndx))
+def test_whole_game(mu_net, memory, buffer):
+    ndx = ray.get(buffer.get_buffer_ndxs.remote())[0]
+    game = ray.get(buffer.get_buffer_ndx.remote(ndx))
     for i in range(50):
         ims, acts, vals, rewards, _, _ = game.make_target(i, 5, 5)
 
@@ -319,14 +320,14 @@ def get_test_graph(mu_net, memory, discrete=False):
     plt.ylim(0, 6)
 
 
-def get_test_numbers(mu_net, i, discrete, memory):
+def get_test_numbers(mu_net, i, discrete, memory, buffer):
     # if discrete:
     #     val = i
     #     shape = [4]
     #     obs = torch.full(shape, val, dtype=torch.float32).unsqueeze(0)
     # else:
-    ndx = ray.get(memory.get_buffer_ndxs.remote())[10]
-    game = ray.get(memory.get_buffer_ndx.remote(ndx))
+    ndx = ray.get(buffer.get_buffer_ndxs.remote())[10]
+    game = ray.get(buffer.get_buffer_ndx.remote(ndx))
     ims, acts, _, rewards, _, _ = game.make_target(21 + i, 5, 5)
 
     print(rewards[0], ims[0].shape, type(ims[0]))
