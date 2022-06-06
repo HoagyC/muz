@@ -20,8 +20,6 @@ class Buffer:
         if self.config["obs_type"] == "discrete":
             self.image_size = self.config["obs_size"]
         elif self.config["obs_type"] == "image":
-            print((self.config["obs_size"][2] + 1) * self.config["last_n_frames"])
-            print(*self.config["obs_size"][:2])
             self.image_size = [
                 (self.config["obs_size"][2] + 1) * self.config["last_n_frames"],
                 *self.config["obs_size"][:2],
@@ -161,21 +159,27 @@ class Buffer:
             depths_a[i] = depth
         self.print_timing("make_lists")
 
-        images_t = torch.tensor(images_a, dtype=torch.float32)
-        actions_t = torch.tensor(actions_a, dtype=torch.int64)
-        target_values_t = torch.tensor(target_values_a, dtype=torch.float32)
-        target_policies_t = torch.tensor(target_policies_a, dtype=torch.float32)
-        target_rewards_t = torch.tensor(target_rewards_a, dtype=torch.float32)
-        weights_t = torch.tensor(weights_a, dtype=torch.float32)
+        images_t = torch.tensor(images_a, dtype=torch.float32, device=device)
+        actions_t = torch.tensor(actions_a, dtype=torch.int64, device=device)
+        target_values_t = torch.tensor(
+            target_values_a, dtype=torch.float32, device=device
+        )
+        target_policies_t = torch.tensor(
+            target_policies_a, dtype=torch.float32, device=device
+        )
+        target_rewards_t = torch.tensor(
+            target_rewards_a, dtype=torch.float32, device=device
+        )
+        weights_t = torch.tensor(weights_a, dtype=torch.float32, device=device)
         weights_t = weights_t / max(weights_t)
         self.print_timing("make_tensors")
         return (
-            images_t.to(device),
-            actions_t.to(device),
-            target_values_t.to(device),
-            target_rewards_t.to(device),
-            target_policies_t.to(device),
-            weights_t.to(device),
+            images_t,
+            actions_t,
+            target_values_t,
+            target_rewards_t,
+            target_policies_t,
+            weights_t,
             depths_a,
         )
 
