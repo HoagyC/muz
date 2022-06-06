@@ -29,6 +29,7 @@ def run(config, train_only=False):
         env = gym.make(config["env_name"])
 
     action_size = env.action_space.n
+    config["action_size"] = action_size
 
     obs_size = config["obs_size"]
     print(obs_size)

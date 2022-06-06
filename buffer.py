@@ -17,6 +17,16 @@ class Buffer:
         self.config = config
         self.memory = memory
 
+        if self.config["obs_type"] == "discrete":
+            self.image_size = self.config["obs_size"]
+        elif self.config["obs_type"] == "image":
+            print((self.config["obs_size"][2] + 1) * self.config["last_n_frames"])
+            print(*self.config["obs_size"][:2])
+            self.image_size = [
+                (self.config["obs_size"][2] + 1) * self.config["last_n_frames"],
+                *self.config["obs_size"][:2],
+            ]
+
         self.last_time = datetime.datetime.now()  # Used if profiling speed of batching
 
         self.size = config["buffer_size"]  # How many game records to store
@@ -80,6 +90,7 @@ class Buffer:
 
     def get_batch(self, batch_size=40, device=torch.device("cpu")):
         self.print_timing("start")
+        rollout_depth = self.config["rollout_depth"]
         batch = []
 
         # Get a random list of points across the length of the buffer to take training examples
@@ -95,15 +106,19 @@ class Buffer:
         )
         self.print_timing("get ndxs")
 
-        images_l = []
-        actions_l = []
-        target_values_l = []
-        target_rewards_l = []
-        target_policies_l = []
-        weights_l = []
-        depths_l = []
+        images_a = np.zeros(
+            (batch_size, rollout_depth, *self.image_size), dtype=np.float32
+        )
+        actions_a = np.zeros((batch_size, rollout_depth), dtype=np.int64)
+        target_values_a = np.zeros((batch_size, rollout_depth), dtype=np.float32)
+        target_rewards_a = np.zeros((batch_size, rollout_depth), dtype=np.float32)
+        target_policies_a = np.zeros(
+            (batch_size, rollout_depth, self.config["action_size"]), dtype=np.float32
+        )
+        weights_a = np.zeros(batch_size, dtype=np.float32)
+        depths_a = np.zeros(batch_size, dtype=np.int64)
 
-        for val in start_vals:
+        for i, val in enumerate(start_vals):
             # Get the index of the game in the buffer (game_ndx) and a location in the game (frame_ndx)
             game_ndx, frame_ndx = self.get_ndxs(val)
 
@@ -136,31 +151,24 @@ class Buffer:
             else:
                 weight = 1
 
-            images_l.append(images)
-            actions_l.append(actions)
-            target_values_l.append(target_values)
-            target_rewards_l.append(target_rewards)
-            target_policies_l.append(target_policies)
+            images_a[i] = images
+            actions_a[i] = actions
+            target_values_a[i] = target_values
+            target_rewards_a[i] = target_rewards
+            target_policies_a[i] = target_policies
 
-            weights_l.append(weight)
-            depths_l.append(depth)
+            weights_a[i] = weight
+            depths_a[i] = depth
         self.print_timing("make_lists")
 
-        images_t = torch.tensor(np.stack(images_l, axis=0), dtype=torch.float32)
-        actions_t = torch.tensor(np.stack(actions_l, axis=0), dtype=torch.int64)
-        target_values_t = torch.tensor(
-            np.stack(target_values_l, axis=0), dtype=torch.float32
-        )
-        target_policies_t = torch.tensor(
-            np.stack(target_policies_l, axis=0), dtype=torch.float32
-        )
-        target_rewards_t = torch.tensor(
-            np.stack(target_rewards_l, axis=0), dtype=torch.float32
-        )
-        weights_t = torch.tensor(weights_l)
+        images_t = torch.tensor(images_a, dtype=torch.float32)
+        actions_t = torch.tensor(actions_a, dtype=torch.int64)
+        target_values_t = torch.tensor(target_values_a, dtype=torch.float32)
+        target_policies_t = torch.tensor(target_policies_a, dtype=torch.float32)
+        target_rewards_t = torch.tensor(target_rewards_a, dtype=torch.float32)
+        weights_t = torch.tensor(weights_a, dtype=torch.float32)
         weights_t = weights_t / max(weights_t)
         self.print_timing("make_tensors")
-
         return (
             images_t.to(device),
             actions_t.to(device),
@@ -168,7 +176,7 @@ class Buffer:
             target_rewards_t.to(device),
             target_policies_t.to(device),
             weights_t.to(device),
-            depths_l,
+            depths_a,
         )
 
     def get_buffer_ndx(self, ndx):
