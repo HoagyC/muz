@@ -75,12 +75,12 @@ class MuZeroCartNet(nn.Module):
         self.policy_loss = nn.CrossEntropyLoss()
 
     def predict(self, latent):
-        policy, value = self.pred_net(latent)
-        return policy, value
+        policy_logits, value_support = self.pred_net(latent)
+        return policy_logits, value_support
 
     def dynamics(self, latent, action):
-        latent, reward = self.dyna_net(latent, action)
-        return latent, reward
+        latent, reward_support = self.dyna_net(latent, action)
+        return latent, reward_support
 
     def represent(self, observation):
         latent = self.repr_net(observation)

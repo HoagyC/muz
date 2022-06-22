@@ -82,7 +82,7 @@ def search(
         )
 
         for i in range(config["n_simulations"]):
-            # vital to have to grad or the size of the computation graph quickly becomes gigantic
+            # vital to have with(torch.no_grad() or the size of the computation graph quickly becomes gigantic
             current_node = root_node
             new_node = False
 
@@ -155,8 +155,8 @@ def backpropagate(search_list, value, minmax, discount):
     and set the value, discounting the value at the node ahead, but then adding the reward"""
     for node in search_list[::-1]:
         node.num_visits += 1
-        node.update_val(value)
         value = node.reward + (value * discount)
+        node.update_val(value)
         minmax.update(value)
 
 
@@ -272,7 +272,7 @@ class TreeNode:
         ]
         maxscore = max(scores)
 
-        # Need to be careful not to always pick the first action is it common that two are scored identically
+        # Need to be careful not to always pick the first action as it common that two are scored identically
         action = np.random.choice(
             [a for a in range(self.action_size) if scores[a] == maxscore]
         )

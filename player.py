@@ -15,14 +15,15 @@ from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 
 from memory import GameRecord
-from models import scalar_to_support, support_to_scalar, normalize
+from models import scalar_to_support, support_to_scalar
 from mcts import search
 
 
 @ray.remote
 class Player:
-    def __init__(self, log_dir):
+    def __init__(self, log_dir, writer=None):
         self.log_dir = log_dir
+        self.writer = writer
 
     def play(self, config, mu_net, device, log_dir, memory, buffer, env):
         minmax = ray.get(memory.get_minmax.remote())
@@ -43,10 +44,6 @@ class Player:
             frames = 0
             over = False
             frame = env.reset()
-            if config["obs_type"] == "image":
-                frame = normalize(frame)
-            else:
-                frame = np.array(frame)
 
             game_record = GameRecord(
                 config=config,
@@ -74,7 +71,9 @@ class Player:
             game_start_time = time.time()
             while not over and frames < config["max_frames"]:
                 if config["obs_type"] == "image":
-                    frame_input = game_record.get_last_n(config["last_n_frames"])
+                    frame_input = game_record.get_last_n(
+                        n=config["last_n_frames"], pos=-1
+                    )
                 else:
                     frame_input = frame
                 tree = search(
@@ -89,15 +88,6 @@ class Player:
                     env.render("human")
 
                 frame, reward, over, _ = env.step(action)
-                # print(tree.children[0].reward, reward)
-
-                # if config["env_name"] == "CartPole-v1" and frames % 20 > 0:
-                #     reward = 0
-
-                if config["obs_type"] == "image":
-                    frame = normalize(frame)
-                else:
-                    frame = np.array(frame)
 
                 game_record.add_step(frame, action, reward, tree)
 
@@ -108,6 +98,8 @@ class Player:
             time_per_move = (time.time() - game_start_time) / frames
 
             game_record.add_priorities(n_steps=config["reward_depth"])
+            stats = ray.get(memory.get_stats.remote())
+            self.writer.add_scalar("score", score, stats["frames"])
 
             game_data = ray.get(memory.done_game.remote(frames, score))
             buffer.save_game.remote(game_record, frames, score, game_data)

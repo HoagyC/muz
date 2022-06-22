@@ -720,11 +720,3 @@ def scalar_to_support(scalar: torch.Tensor, epsilon=0.00001, half_width: int = 1
         support.squeeze_(0)
 
     return support
-
-
-def normalize(image):
-    image_a = np.array(image, dtype=np.float32)
-    # resize for neat convolutions, taken from openmuZ
-    image_a = cv2.resize(image_a, (96, 96), interpolation=cv2.INTER_AREA)
-    image_a = image_a / 256
-    return image_a.transpose(2, 0, 1)

@@ -110,7 +110,8 @@ class MCTS:
                             torch.tensor([action]), num_classes=self.action_size
                         )
 
-                        # apply the dynamics function to get a representation of the state after the action, and the reward gained
+                        # apply the dynamics function to get a representation of
+                        # the state after the action, and the reward gained
                         # then estimate the policy and value at this new state
 
                         latent, reward = [
@@ -411,7 +412,8 @@ class TreeNode:
 
     def update_val(self, curr_val):
         """Updates the average value of a node when a new value is receivied
-        copies the formula of the muzero paper rather than the neater form of just tracking the sum and dividng as needed
+        copies the formula of the muzero paper rather than the neater form of
+        just tracking the sum and dividng as needed
         """
         nmtr = self.average_val * self.num_visits + (curr_val + self.val_pred)
         dnmtr = self.num_visits + 1

@@ -16,14 +16,7 @@ class Buffer:
     def __init__(self, config, memory):
         self.config = config
         self.memory = memory
-
-        if self.config["obs_type"] == "discrete":
-            self.image_size = self.config["obs_size"]
-        elif self.config["obs_type"] == "image":
-            self.image_size = [
-                (self.config["obs_size"][2] + 1) * self.config["last_n_frames"],
-                *self.config["obs_size"][:2],
-            ]
+        self.image_size = config["full_image_size"]
 
         self.last_time = datetime.datetime.now()  # Used if profiling speed of batching
 

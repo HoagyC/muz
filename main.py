@@ -1,8 +1,10 @@
 import datetime
+import importlib
 import os
 import sys
 import time
 import yaml
+
 
 import gym
 import numpy as np
@@ -17,16 +19,20 @@ from player import Player
 from models import MuZeroCartNet, MuZeroAtariNet, TestNet
 from memory import GameRecord, Memory
 from reanalyser import Reanalyser
-from testgame import TestEnv, TestEnvD
+from envs import testgame_env, testgamed_env, atari_env, cartpole_env
+
+
+ENV_DICT = {"image": atari_env, "cartpole": cartpole_env, "test": testgame_env}
+NET_DICT = {
+    "cartpole": MuZeroCartNet,
+    "image": MuZeroAtariNet,
+    "test": TestNet,
+}
 
 
 def run(config, train_only=False):
-    if config["env_name"] == "testgame":
-        env = TestEnv()
-    elif config["env_name"] == "testgamed":
-        env = TestEnvD()
-    else:
-        env = gym.make(config["env_name"])
+    env = ENV_DICT[config["obs_type"]].make_env(config)
+    config["full_image_size"] = env.full_image_size
 
     action_size = env.action_space.n
     config["action_size"] = action_size
@@ -36,17 +42,9 @@ def run(config, train_only=False):
     if config["obs_type"] in ["cartpole", "test"]:
         obs_size = obs_size[0]
 
-    net_type_dict = {
-        "cartpole": MuZeroCartNet,
-        "image": MuZeroAtariNet,
-        "test": TestNet,
-    }
-
     print(f"Observation size: {obs_size}")
 
-    muzero_class = net_type_dict[config["obs_type"]]
-
-    print(muzero_class)
+    muzero_class = NET_DICT[config["obs_type"]]
     muzero_network = muzero_class(action_size, obs_size, config)
     muzero_network.init_optim(config["learning_rate"])
 
@@ -179,7 +177,6 @@ if __name__ == "__main__":
         config["debug"] = False
         config["log_dir"] = "/content/gdrive/My Drive/muz"
         config["batch_size"] = 128  # 256 causes insufficient memory errors
-        if config["obs_type"] == "image":
-            config["repr_channels"] = 128
+        config["repr_channels"] = 128
 
     run(config)

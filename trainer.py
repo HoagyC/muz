@@ -194,7 +194,6 @@ class Trainer:
                 policy_loss = mu_net.policy_loss(
                     pred_policy_logits[screen_t], target_policy_step_i[screen_t]
                 )
-
                 if config["consistency_loss"]:
                     consistency_loss = mu_net.consistency_loss(
                         latents[screen_t], target_latents[screen_t]
@@ -259,7 +258,7 @@ class Trainer:
                 ),
             }
 
-            memory.done_batch.remote()
+            frames = ray.get(memory.get_data.remote())["frames"]
             if total_batches % 50 == 0:
                 mu_net.to(device=torch.device("cpu"))
                 memory.save_model.remote(mu_net, log_dir)
@@ -268,11 +267,11 @@ class Trainer:
 
             if self.writer:
                 for key, val in metrics_dict.items():
-                    self.writer.add_scalar(key, val, total_batches)
+                    self.writer.add_scalar(key, val, frames)
 
             if total_batches % 100 == 0:
                 print(
-                    f"Completed {total_batches} total batches of size {config['batch_size']}, took {(time.time() - st)}"
+                    f"Completed {total_batches} total batches of size {config['batch_size']}, last took {(time.time() - st):5.3}s"
                 )
             if self.config["train_speed_profiling"]:
                 print(f"WHOLE BATCH: {time.time() - st}")
