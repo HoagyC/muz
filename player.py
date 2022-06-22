@@ -98,8 +98,9 @@ class Player:
             time_per_move = (time.time() - game_start_time) / frames
 
             game_record.add_priorities(n_steps=config["reward_depth"])
-            stats = ray.get(memory.get_stats.remote())
-            self.writer.add_scalar("score", score, stats["frames"])
+            stats = ray.get(memory.get_data.remote())
+            if self.writer:
+                self.writer.add_scalar("score", score, stats["frames"])
 
             game_data = ray.get(memory.done_game.remote(frames, score))
             buffer.save_game.remote(game_record, frames, score, game_data)
