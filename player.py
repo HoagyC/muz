@@ -35,9 +35,7 @@ class Player:
             self.total_frames = data["frames"]
 
             if "latest_model_dict.pt" in os.listdir(log_dir):
-                mu_net = ray.get(
-                    memory.load_model.remote(log_dir, mu_net, device=device)
-                )
+                mu_net = ray.get(memory.load_model.remote(log_dir, mu_net))
             else:
                 memory.save_model.remote(mu_net, log_dir)
 
