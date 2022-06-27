@@ -237,6 +237,7 @@ class Memory:
 
     def save_model(self, model, log_dir):
         path = os.path.join(log_dir, "latest_model_dict.pt")
+        print("saving", next(model.pred_net.parameters()).device)
         torch.save(model.state_dict(), path)
 
     def load_model(self, log_dir, model):
