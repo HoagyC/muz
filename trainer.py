@@ -259,9 +259,8 @@ class Trainer:
             }
 
             frames = ray.get(memory.get_data.remote())["frames"]
-            if total_batches % 50 == 0:
-                mu_net.to(device=torch.device("cpu"))
-                memory.save_model.remote(mu_net, log_dir)
+            if total_batches % 500 == 0:
+                memory.save_model.remote(mu_net.to(device=torch.device("cpu")), log_dir)
                 mu_net.to(device=device)
             total_batches += 1
 
