@@ -237,18 +237,15 @@ class Memory:
 
     def save_model(self, model, log_dir):
         path = os.path.join(log_dir, "latest_model_dict.pt")
-        print("saving", next(model.pred_net.parameters()).device)
         torch.save(model.state_dict(), path)
 
     def load_model(self, log_dir, model):
-        print("loading from, ", log_dir)
         it = time.time()
         path = os.path.join(log_dir, "latest_model_dict.pt")
         if os.path.exists(path):
             model.load_state_dict(torch.load(path, map_location=torch.device("cpu")))
         else:
             print(f"no dict to load at {path}")
-        print("loaded memory")
 
         return model
 

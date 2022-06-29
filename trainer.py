@@ -44,11 +44,8 @@ class Trainer:
         next_batch = None
         total_batches = ray.get(memory.get_data.remote())["batches"]
         if "latest_model_dict.pt" in os.listdir(log_dir):
-            print("about to load")
             mu_net = ray.get(memory.load_model.remote(log_dir, mu_net))
-            print("done loading")
         mu_net.to(device)
-        print("to device")
 
         while ray.get(buffer.get_buffer_len.remote()) == 0:
             time.sleep(1)
@@ -263,11 +260,8 @@ class Trainer:
 
             frames = ray.get(memory.get_data.remote())["frames"]
             if total_batches % 50 == 0:
-                print("about to save")
                 memory.save_model.remote(mu_net.to(device=torch.device("cpu")), log_dir)
-                print("saved")
                 mu_net.to(device=device)
-                print("back to device")
             total_batches += 1
 
             if self.writer:
