@@ -52,8 +52,8 @@ if __name__ == "__main__":
         ]
         run_name = "_".join(sub_names)
         print(run_name)
-        if len(sys.argv) > 3 and sys.argv[2] == "colab":
-            path = os.path.join("/content/gdrive/My Drive/muz/testcomp", run_name)
+        if len(sys.argv) > 2 and sys.argv[2] == "colab":
+            path = os.path.join("/content/gdrive/My Drive/muz/comp", run_name)
         else:
             path = os.path.join("testcomp", run_name)
         begin_run = start_run if config_ndx == start_config else 0
