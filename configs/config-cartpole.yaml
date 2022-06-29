@@ -16,6 +16,8 @@ print_simple: True
 max_games: 500 # Total number of games before training is ended
 max_total_frames: 10000
 max_frames: 1000 # Maximum frames for a single game before it is cut short
+try_cuda: False # Whether to use cuda if available (makes training slower on cartpole)
+
 
 # Model params
 latent_size: 20

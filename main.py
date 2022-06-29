@@ -75,7 +75,9 @@ def run(config, train_only=False):
 
     workers = []
 
-    buffer_gpus = 0.1 if torch.cuda.is_available() else 0
+    use_cuda = config["try_cuda"] and torch.cuda.is_available()
+
+    buffer_gpus = 0.1 if use_cuda else 0
     memory = Memory.options(num_cpus=0.1).remote(config, log_dir)
     buffer = Buffer.options(num_cpus=0.1, num_gpus=buffer_gpus).remote(config, memory)
 
@@ -90,13 +92,13 @@ def run(config, train_only=False):
     start_time = time.time()
     scores = []
 
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:0" if use_cuda else "cpu")
     print(f"Training on device: {device}")
 
     player = Player.options(num_cpus=0.3).remote(log_dir=log_dir)
 
-    train_cpus = 0 if torch.cuda.is_available() else 0.1
-    train_gpus = 0.9 if torch.cuda.is_available() else 0
+    train_cpus = 0 if use_cuda else 0.1
+    train_gpus = 0.9 if use_cuda else 0
     trainer = Trainer.options(num_cpus=train_cpus, num_gpus=train_gpus).remote()
 
     if not train_only:
