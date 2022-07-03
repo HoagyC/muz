@@ -48,7 +48,7 @@ class Buffer:
             self.buffer, self.buffer_ndxs = pickle.load(f)
         self.update_stats()
 
-    def update_vals(self, ndx, vals):
+    def update_game_info(self, ndx, vals, search_stats):
         try:
             buf_ndx = self.buffer_ndxs.index(ndx)
             self.buffer[buf_ndx].values = vals

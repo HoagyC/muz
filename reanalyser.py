@@ -46,7 +46,8 @@ class Reanalyser:
                 game_rec = ray.get(buffer.get_buffer_ndx.remote(ndx))
                 minmax = ray.get(memory.get_minmax.remote())
 
-                vals = game_rec.values
+                vals = []
+                search_stats = []
 
                 for i in range(len(game_rec.observations) - 1):
                     if self.config["obs_type"] == "image":
@@ -64,9 +65,14 @@ class Reanalyser:
                         log_dir=self.log_dir,
                         device=torch.device("cpu"),
                     )
-                    vals[i] = new_root.average_val
+                    vals.append(new_root.average_val)
+                    search_stats.append(
+                        [c.num_visits if c else 0 for c in new_root.children]
+                    )
 
-                buffer.update_vals.remote(ndx=ndx, vals=vals)
+                buffer.update_game_info.remote(
+                    ndx=ndx, vals=vals, search_stats=search_stats
+                )
                 buffer.add_priorities.remote(ndx=ndx, reanalysing=True)
                 print(f"Reanalysed game {ndx}")
             else:

@@ -66,25 +66,28 @@ def plot_switch_comparisons(data_dict):
 
 
 def plot_all(data_dict, config_names):
+    config_names.sort(key=lambda x: len(x))
     fig, ax = plt.subplots(1, 1, figsize=(12, 10))
 
-    for config_name in config_names:
+    for i, config_name in enumerate(config_names):
         config_dict = {
             key: value for key, value in data_dict.items() if config_name in key
         }
 
+        width = 2 if i in [0, len(config_names) - 1] else 1
+
         average_scores = process_runs(config_dict)
-        ax.plot(average_scores, label=config_name)
+        ax.plot(average_scores, label=config_name, linewidth=width)
 
     ax.legend()
     ax.set_xlabel("Number of elapsed frames")
     ax.set_ylabel("Average score across runs")
-    ax.set_title(f"Comparison between all switch combinations")
+    ax.set_title("Comparison between all switch combinations")
     plt.show()
 
 
 def get_data_dict():
-    data_folder = "comp"
+    data_folder = "colab_comps"
 
     data_dict = {}
     config_names = []
