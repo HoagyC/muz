@@ -7,7 +7,6 @@ import yaml
 
 
 import gym
-import gym_cartpole_swingup
 import numpy as np
 import ray
 
