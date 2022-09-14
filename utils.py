@@ -5,7 +5,7 @@ import torch
 def convert_to_int(obs, game_type):
     if game_type == "image":
         return (obs * 256).astype(np.ubyte)
-    elif game_type == "cartpole":
+    elif game_type == "discrete":
         return ((obs * 64) + 128).astype(np.ubyte)
     elif game_type == "test":
         return obs.astype(np.ubyte)
@@ -16,7 +16,7 @@ def convert_to_int(obs, game_type):
 def convert_from_int(obs, game_type):
     if game_type == "image":
         return obs.astype(np.float32) / 256
-    elif game_type == "cartpole":
+    elif game_type == "discrete":
         return (obs.astype(np.float32) - 128) / 64
     elif game_type == "test":
         return obs.astype(np.float32)

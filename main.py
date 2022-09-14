@@ -7,6 +7,7 @@ import yaml
 
 
 import gym
+import gym_cartpole_swingup
 import numpy as np
 import ray
 
@@ -19,27 +20,24 @@ from player import Player
 from models import MuZeroCartNet, MuZeroAtariNet, TestNet
 from memory import GameRecord, Memory
 from reanalyser import Reanalyser
-from envs import testgame_env, testgamed_env, atari_env, cartpole_env
+from envs.make_envs import make_env
 
-
-ENV_DICT = {"image": atari_env, "cartpole": cartpole_env, "test": testgame_env}
 NET_DICT = {
-    "cartpole": MuZeroCartNet,
+    "discrete": MuZeroCartNet,
     "image": MuZeroAtariNet,
     "test": TestNet,
 }
 
 
 def run(config, train_only=False):
-    env = ENV_DICT[config["obs_type"]].make_env(config)
+    env = make_env(config)
     config["full_image_size"] = env.full_image_size
 
     action_size = env.action_space.n
     config["action_size"] = action_size
 
-    obs_size = config["obs_size"]
-    print(obs_size)
-    if config["obs_type"] in ["cartpole", "test"]:
+    obs_size = env.observation_space.shape
+    if config["obs_type"] in ["discrete", "test"]:
         obs_size = obs_size[0]
 
     print(f"Observation size: {obs_size}")

@@ -1,8 +1,8 @@
 # Basic params
-env_name: "CartPole-v1"
-obs_type: "cartpole"
+env_name: "TorchCartPoleSwingUp-v1"
+obs_name: "cartpoleswing"
+obs_type: "discrete"
 seed: 0
-obs_size: [4]
 
 # Setup params  
 log_dir: "runs"
@@ -14,7 +14,7 @@ get_batch_profiling: False
 render: True
 print_simple: True
 max_games: 500 # Total number of games before training is ended
-max_total_frames: 10000
+max_total_frames: 200000
 max_frames: 1000 # Maximum frames for a single game before it is cut short
 try_cuda: False # Whether to use cuda if available (makes training slower on cartpole)
 
@@ -47,9 +47,9 @@ priority_alpha: 1
 priority_beta: 1
 
 # Temperature schedule
-temp1: 1000 # Steps after which temperature is dropped to 0.5
-temp2: 2000 # Steps after which temperature is dropped to 0.25
-temp3: 3000 # Steps after which temperature is dropped to 0
+temp1: 2000 # Steps after which temperature is dropped to 0.5
+temp2: 5000 # Steps after which temperature is dropped to 0.25
+temp3: 15000 # Steps after which temperature is dropped to 0
 
 # Reanalyse
 reanalyse: True
